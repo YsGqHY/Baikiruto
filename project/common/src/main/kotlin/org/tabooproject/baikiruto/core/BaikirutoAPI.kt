@@ -8,4 +8,6 @@ package org.tabooproject.baikiruto.core
  * @since 2026/2/26 23:03
  */
 interface BaikirutoAPI {
+
+    fun getScriptHandler(): BaikirutoScriptHandler
 }
