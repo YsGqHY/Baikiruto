@@ -36,4 +36,14 @@ interface BaikirutoScriptHandler {
      * @param id 脚本名称
      */
     fun preheat(source: String, id: String)
+
+    fun invalidate(id: String) {
+    }
+
+    fun invalidateByPrefix(prefix: String) {
+    }
+
+    fun cacheStats(): ScriptCacheStats {
+        return ScriptCacheStats()
+    }
 }

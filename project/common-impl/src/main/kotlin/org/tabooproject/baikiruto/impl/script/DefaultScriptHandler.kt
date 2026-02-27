@@ -1,11 +1,14 @@
 package org.tabooproject.baikiruto.impl.script
 
 import org.bukkit.command.CommandSender
+import org.tabooproject.baikiruto.core.ScriptCacheStats
 import org.tabooproject.baikiruto.core.BaikirutoScriptHandler
 import org.tabooproject.baikiruto.impl.script.handler.FluxonHandler
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
 import taboolib.common.platform.PlatformFactory
+import taboolib.common.platform.function.info
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Aiyatsbus
@@ -24,15 +27,31 @@ class DefaultScriptHandler : BaikirutoScriptHandler {
         return fluxonHandler.preheat(source, id)
     }
 
+    override fun invalidate(id: String) {
+        fluxonHandler.invalidate(id)
+    }
+
+    override fun invalidateByPrefix(prefix: String) {
+        fluxonHandler.invalidateByPrefix(prefix)
+    }
+
+    override fun cacheStats(): ScriptCacheStats {
+        return fluxonHandler.cacheStats()
+    }
+
     companion object {
 
         val DEFAULT_PACKAGE_AUTO_IMPORT = mutableSetOf<String>()
+        private val registered = AtomicBoolean(false)
 
         lateinit var fluxonHandler: FluxonHandler
 
-        @Awake(LifeCycle.INIT)
+        @Awake(LifeCycle.LOAD)
         fun init() {
-            PlatformFactory.registerAPI<BaikirutoScriptHandler>(DefaultScriptHandler())
+            if (registered.compareAndSet(false, true)) {
+                PlatformFactory.registerAPI<BaikirutoScriptHandler>(DefaultScriptHandler())
+                info("[Baikiruto] Script handler registered in LOAD.")
+            }
         }
     }
 }

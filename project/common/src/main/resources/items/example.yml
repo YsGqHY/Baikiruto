@@ -1,0 +1,389 @@
+__group__:
+  id: "example"
+  path: "example"
+  priority: 100
+  icon: "example:all_features"
+
+models:
+  "example/base":
+    material: "NETHERITE_SWORD"
+    display: "example/default"
+    data:
+      profile: "example-base"
+      server_target: "1.21.11"
+  "example/1_21_11":
+    from:
+      - "example/base"
+    effects:
+      item-model: "baikiruto:items/all_features_12111"
+      custom-model-data: 1211101
+      tooltip-style: "baikiruto:tooltip/default"
+
+displays:
+  "example/default":
+    name:
+      item_name: "&6Baikiruto Example Item"
+    lore:
+      item_type: "&7Target: Minecraft 1.21.11"
+      item_description:
+        - "&7Generated from items/example.yml"
+
+items:
+  "example:all_features":
+    icon: "NETHERITE_SWORD"
+    version-hash: "m12111-example"
+    model: "example/1_21_11"
+    display: "example/default"
+    name:
+      item_name: "&6Example: All Features"
+    lore:
+      item_type: "&71.21.11 full feature item"
+      item_description:
+        - "&7Use /baikiruto debug give example:all_features"
+        - "&7Durability: {durability_current}/{durability_max} {durability_bar}"
+        - "&7Cooldown: {cooldown_remaining} ticks"
+        - "&7Mapped: {durability_line}"
+        - "&7Owner: {unique.player}"
+        - "&7Last trigger: {last_trigger}"
+    data:
+      category: "example"
+      tier: "legendary"
+      durability: 240
+      charge: 3
+    data-mapper:
+      durability_line: |
+        return (data["durability_current"] ?: data["durability"] ?: 0).toString() + "/" + (data["durability"] ?: 0).toString()
+    effects:
+      glow: true
+      item-flags:
+        - HIDE_ENCHANTS
+        - HIDE_ATTRIBUTES
+    i18n:
+      en_us:
+        name:
+          item_name: "&6Example: All Features"
+        lore:
+          item_description:
+            - "&7English localization active"
+      zh_cn:
+        name:
+          item_name: "&6Example: All Features (zh_cn)"
+        lore:
+          item_description:
+            - "&7zh_cn localization active"
+    scripts:
+      build: |
+        if (ctx["debug"] == true) {
+            sender?.sendMessage("[Baikiruto] build -> " + itemId)
+        }
+        return item
+      release: |
+        ops.setData("last_release", "release")
+        return item
+      release_display: |
+        ops.setData("last_release_display", "release_display")
+        return item
+      drop: |
+        ops.setData("last_trigger", "drop")
+        return item
+    event:
+      on_use: |
+        ops.setData("last_trigger", "use")
+        return item
+      on_interact: |
+        ops.setData("last_trigger", "interact")
+        return item
+      on_left_click: |
+        ops.setData("last_trigger", "left_click")
+        return item
+      on_right_click: |
+        ops.setCooldown(80)
+        ops.signal("script_dispatched")
+        ops.setData("last_trigger", "right_click")
+        return item
+      on_right_click_entity: |
+        ops.setData("last_trigger", "right_click_entity")
+        return item
+      on_attack: |
+        ops.setData("last_trigger", "attack")
+        return item
+      on_damage: |
+        ops.damage(1)
+        ops.setData("last_trigger", "damage")
+        return item
+      on_block_break: |
+        ops.setData("last_trigger", "block_break")
+        return item
+      on_item_break: |
+        ops.setData("last_trigger", "item_break")
+        return item
+      on_consume: |
+        ops.setData("last_trigger", "consume")
+        return item
+      on_pickup: |
+        ops.setData("last_trigger", "pickup")
+        return item
+      on_swap_to_mainhand: |
+        ops.setData("last_trigger", "swap_to_mainhand")
+        return item
+      on_swap_to_offhand: |
+        ops.setData("last_trigger", "swap_to_offhand")
+        return item
+      on_inventory_click: |
+        ops.setData("last_trigger", "inventory_click")
+        return item
+      on_select: |
+        ops.setData("last_trigger", "select")
+        return item
+      on_async_tick: |
+        ops.setData("last_trigger", "async_tick")
+        return item
+    metas:
+      trace:
+        scripts:
+          build: |
+            if (ctx["debug"] == true) {
+                sender?.sendMessage("[Baikiruto] meta build -> " + itemId)
+            }
+            return item
+          drop: |
+            return item
+    meta:
+      durability:
+        synchronous: true
+        remains: "example:remainder"
+        bar-length: 12
+        bar-symbol:
+          - "&a|"
+          - "&7|"
+      cooldown:
+        ticks: 80
+        by-player: true
+      unique:
+        enabled: true
+        bind-player: true
+        deny-message: "&cThis item is bound to another player."
+      native:
+        baikiruto:
+          source: "example-all-features"
+          server: "1.21.11"
+      attribute:
+        mainhand:
+          attack_damage: "6"
+          attack_speed: "+10%"
+      can-destroy:
+        - STONE
+        - DEEPSLATE
+      can-place-on:
+        - DIRT
+        - GRASS_BLOCK
+    components:
+      "minecraft:custom_name": "{\"text\":\"Example All Features\",\"color\":\"gold\",\"italic\":false}"
+      "minecraft:lore":
+        - "{\"text\":\"1.21.11 data component showcase\",\"color\":\"gray\",\"italic\":false}"
+        - "{\"text\":\"Includes script/meta/component pipeline\",\"color\":\"dark_gray\",\"italic\":false}"
+      "minecraft:item_model": "baikiruto:items/all_features_12111"
+      "minecraft:custom_model_data":
+        value: 1211101
+      "minecraft:enchantments":
+        levels:
+          minecraft:sharpness: 5
+          minecraft:unbreaking: 3
+        show_in_tooltip: false
+      "minecraft:attribute_modifiers":
+        modifiers:
+          - type: "attack_damage"
+            amount: 6.0
+            operation: "add_value"
+            slot: "mainhand"
+          - type: "attack_speed"
+            amount: 0.1
+            operation: "add_multiplied_total"
+            slot: "mainhand"
+      "minecraft:unbreakable":
+        show_in_tooltip: false
+      "minecraft:damage": 3
+      "minecraft:max_damage": 240
+      "minecraft:can_break":
+        blocks:
+          - STONE
+          - DEEPSLATE
+      "minecraft:can_place_on":
+        blocks:
+          - DIRT
+          - GRASS_BLOCK
+      "minecraft:tooltip_style": "baikiruto:tooltip/default"
+      "minecraft:rarity": "epic"
+      "minecraft:glider": false
+      "minecraft:use_cooldown":
+        seconds: 4.0
+        cooldown_group: "baikiruto:example_weapon"
+      "minecraft:use_remainder":
+        id: "example:remainder"
+        amount: 1
+      "minecraft:equippable":
+        slot: "mainhand"
+        equip_sound: "entity.player.levelup"
+        model: "baikiruto:items/all_features_equipped"
+      "minecraft:damage_resistant":
+        enabled: true
+        types:
+          - "projectile"
+      "minecraft:death_protection":
+        enabled: true
+        health: 4.0
+        consume: false
+        types:
+          - "void"
+      "minecraft:custom_data":
+        baikiruto:
+          item_id: "example:all_features"
+          server: "1.21.11"
+          channel: "itemstream"
+
+  "example:remainder":
+    icon: "APPLE"
+    version-hash: "m12111-example"
+    name: "&aExample Remainder"
+    lore:
+      - "&7Used by durability/use_remainder demos."
+    data:
+      profile: "remainder"
+    effects:
+      custom-model-data: 1211102
+
+  "example:guardian_totem":
+    icon: "TOTEM_OF_UNDYING"
+    version-hash: "m12111-example"
+    name:
+      item_name: "&eGuardian Totem"
+    lore:
+      item_description:
+        - "&7Offhand damage resistance and death protection demo"
+    components:
+      "minecraft:equippable":
+        slot: "offhand"
+      "minecraft:damage_resistant":
+        enabled: true
+        types:
+          - "fire"
+          - "explosion"
+      "minecraft:death_protection":
+        enabled: true
+        health: 10.0
+        consume: true
+        types:
+          - "all"
+      "minecraft:use_remainder":
+        id: "example:remainder"
+        amount: 1
+      "minecraft:use_cooldown":
+        seconds: 10.0
+        cooldown_group: "baikiruto:guardian_totem"
+      "minecraft:rarity": "rare"
+      "minecraft:custom_data":
+        baikiruto:
+          item_id: "example:guardian_totem"
+    event:
+      on_use: |
+        ops.setData("last_trigger", "totem_use")
+        return item
+      on_damage: |
+        ops.setData("last_trigger", "totem_damage")
+        return item
+
+  "example:potion_suite":
+    icon: "POTION"
+    version-hash: "m12111-example"
+    name: "&bPotion Feature Example"
+    lore:
+      - "&7Potion meta + potion_contents component"
+    meta:
+      potion:
+        base: "speed"
+        extended: false
+        upgraded: true
+        color: "55AAFF"
+        effects:
+          speed:
+            duration: 200
+            amplifier: 1
+            icon: true
+      can-place-on:
+        - STONE
+    components:
+      "minecraft:potion_contents":
+        potion: "minecraft:strong_swiftness"
+        custom_color: "55AAFF"
+        custom_effects:
+          - id: "minecraft:speed"
+            duration: 300
+            amplifier: 1
+            ambient: false
+            show_particles: true
+            show_icon: true
+      "minecraft:use_remainder": "GLASS_BOTTLE"
+      "minecraft:custom_data":
+        baikiruto:
+          item_id: "example:potion_suite"
+    event:
+      on_consume: |
+        ops.setData("last_trigger", "potion_consume")
+        return item
+
+  "example:skull_suite":
+    icon: "PLAYER_HEAD"
+    version-hash: "m12111-example"
+    name: "&fSkull Feature Example"
+    lore:
+      - "&7Skull owner/texture demo"
+    meta:
+      skull:
+        owner: "Notch"
+    components:
+      "minecraft:tooltip_style": "baikiruto:tooltip/default"
+      "minecraft:custom_data":
+        baikiruto:
+          item_id: "example:skull_suite"
+
+  "example:spawner_suite":
+    icon: "SPAWNER"
+    version-hash: "m12111-example"
+    name: "&6Spawner Feature Example"
+    lore:
+      - "&7Spawner block state demo"
+    meta:
+      spawner:
+        entity: "ZOMBIE"
+        delay: 40
+        min-delay: 200
+        max-delay: 800
+        spawn-count: 2
+        max-nearby-entities: 8
+        required-player-range: 16
+        spawn-range: 4
+      can-destroy:
+        - STONE
+    components:
+      "minecraft:custom_data":
+        baikiruto:
+          item_id: "example:spawner_suite"
+
+  "example:glider_chestplate":
+    icon: "NETHERITE_CHESTPLATE"
+    version-hash: "m12111-example"
+    name: "&dGlider Chestplate"
+    lore:
+      - "&7Glider + equippable + resistance demo"
+    components:
+      "minecraft:equippable":
+        slot: "chest"
+      "minecraft:glider": true
+      "minecraft:damage_resistant":
+        enabled: true
+        types:
+          - "fall"
+      "minecraft:rarity": "uncommon"
+      "minecraft:custom_data":
+        baikiruto:
+          item_id: "example:glider_chestplate"

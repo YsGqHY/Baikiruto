@@ -1,42 +1,37 @@
-# TabooLib SDK (multi-module)
+# Baikiruto
 
-> 多模块 `TabooLib` 项目模板  
+Baikiruto 是基于 TabooLib 的跨版本物品库插件，目标支持 Minecraft 1.12 - 1.21.11。
 
-## 准备工作
+## 模块结构
 
-项目结构如下所示
+- `project:common`：公共 API、ItemStream/Item/Meta 模型
+- `project:common-impl`：默认实现、脚本融合、重载/诊断能力
+- `project:module-bukkit`：Bukkit 启动层
+- `project:module-v1_12`：1.12 版本适配
+- `project:module-v1_20_4`：1.20.4 版本适配
+- `project:module-v1_21`：1.21.x 版本适配（core 依赖 `ink.ptms.core:v12110:12110`）
+- `plugin`：最终聚合打包模块
 
-    taboolib-multi-module-sdk
-    ├── plugin                     -- 插件打包模块，用于将子模块合并打包
-    │   └── build.gradle.kts
-    ├── project                    -- 项目目录
-    │   ├── core                   -- 核心模块
-    │   │   └── build.gradle.kts
-    │   └── runtime-bukkit         -- Bukkit 平台启动类，不要把你的业务逻辑写到这里面
-    │       └── build.gradle.kts
-    ├── build.gradle.kts           -- 全局构建文件
-    ├── gradle.properties          -- 全局配置
-    ├── settings.gradle.kts        -- 全局配置
-    ...
+## 关键命令
 
-## 构建发行版本
+- `/baikiruto debug build [itemId]`
+- `/baikiruto reload`
+- `/baikiruto reload items`
+- `/baikiruto reload scripts`
+- `/baikiruto selfcheck`
 
-发行版本用于正常使用, 不含 TabooLib 本体。
+## 文档
 
-```
+- `docs/开发计划.md`
+- `docs/开发约定.md`
+- `docs/快速开始.md`
+- `docs/脚本示例.md`
+- `docs/版本支持表.md`
+- `docs/排障指南.md`
+- `docs/发布清单.md`
+
+## 构建
+
+```bash
 ./gradlew build
 ```
-
-## 构建开发版本
-
-开发版本包含 TabooLib 本体, 用于开发者使用, 但不可运行。
-
-```
-./gradlew taboolibBuildApi -PDeleteCode
-```
-
-> 参数 -PDeleteCode 表示移除所有逻辑代码以减少体积。
-
-## 总结
-
-本模块结构仅供参考，实际开发时可自由发挥。

@@ -1,0 +1,13 @@
+default_display_1:
+  name: "&7<item_name>"
+  lore:
+    - "&9<item_type>"
+    - "&f<item_description...>"
+
+default_display_2:
+  name: "&7<item_name>"
+  lore:
+    - "&9<item_type>"
+    - "&f<item_description...>"
+    - ""
+    - "&a+<damage> Damage"

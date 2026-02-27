@@ -1,7 +1,9 @@
-package org.tabooproject.baikiruto.impl.script.handler
+﻿package org.tabooproject.baikiruto.impl.script.handler
 
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
+import org.tabooproject.baikiruto.core.ScriptCacheStats
+import org.tabooproject.baikiruto.impl.log.BaikirutoLog
 import org.tabooproject.baikiruto.impl.script.DefaultScriptHandler
 import org.tabooproject.baikiruto.impl.script.relocate.FluxonRelocate
 import org.tabooproject.fluxon.Fluxon
@@ -14,25 +16,22 @@ import org.tabooproject.fluxon.runtime.error.FluxonRuntimeError
 import org.tabooproject.fluxon.util.exceptFluxonCompletableFutureError
 import org.tabooproject.fluxon.util.printError
 import taboolib.common.Requires
-import taboolib.common.platform.function.warning
 import taboolib.platform.BukkitPlugin
 import java.text.ParseException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
-/**
- * 本类无实际意义，供 ASM 生成
- *
- * @author mical
- * @since 2026/1/3 13:55
- */
 @Requires(missingClasses = ["!org.tabooproject.fluxon.ParseScript"])
 @FluxonRelocate
 object Fluxon : FluxonHandler {
 
-    // 服了脚本
     private val compiledScripts = ConcurrentHashMap<String, RuntimeScriptBase>()
     private val classLoader = FluxonClassLoader(BukkitPlugin::class.java.classLoader)
     private val environment = FluxonRuntime.getInstance().newEnvironment()
+    private val invokeHits = AtomicLong(0)
+    private val invokeMisses = AtomicLong(0)
+    private val totalCompilations = AtomicLong(0)
+    private val totalCompilationNanos = AtomicLong(0)
 
     init {
         FluxonPlugin.DEFAULT_ALLOW_EXECUTE_TASK_ON_NON_SCRIPT_ENV = true
@@ -44,7 +43,12 @@ object Fluxon : FluxonHandler {
         sender: CommandSender?,
         variables: Map<String, Any?>
     ): Any? {
-        if (!compiledScripts.containsKey(id)) preheat(source, id)
+        if (!compiledScripts.containsKey(id)) {
+            invokeMisses.incrementAndGet()
+            preheat(source, id)
+        } else {
+            invokeHits.incrementAndGet()
+        }
 
         val scriptBase = compiledScripts[id] ?: return null
 
@@ -58,29 +62,56 @@ object Fluxon : FluxonHandler {
         return try {
             scriptBase.eval(environment)?.exceptFluxonCompletableFutureError()
         } catch (ex: FluxonRuntimeError) {
+            BaikirutoLog.scriptRuntimeFailed(id, ex)
             ex.printError()
             null
         } catch (ex: Throwable) {
+            BaikirutoLog.scriptRuntimeFailed(id, ex)
             ex.printStackTrace()
             null
         }
     }
 
     override fun preheat(source: String, id: String) {
+        val startAt = System.nanoTime()
         try {
             val result = Fluxon.compile(
                 environment,
-                CompilationContext(source).apply { packageAutoImport += DefaultScriptHandler.DEFAULT_PACKAGE_AUTO_IMPORT },
-                id + System.currentTimeMillis(), // 这里要加一个时间，因为不能加载一样名称的类
+                CompilationContext(source).apply {
+                    packageAutoImport += DefaultScriptHandler.DEFAULT_PACKAGE_AUTO_IMPORT
+                },
+                id + System.currentTimeMillis(),
                 classLoader
             )
-//            Files.write(newFile(newFolder(getDataFolder(), "classes"), "${id}.class").toPath(), result.mainClass)
             compiledScripts[id] = result.createInstance(classLoader) as RuntimeScriptBase
+            totalCompilations.incrementAndGet()
+            totalCompilationNanos.addAndGet(System.nanoTime() - startAt)
         } catch (ex: ParseException) {
-            warning("编译脚本 $source 时发生错误:")
+            BaikirutoLog.scriptCompileFailed(id, ex)
             ex.printStackTrace()
         } catch (ex: Throwable) {
+            BaikirutoLog.scriptCompileFailed(id, ex)
             ex.printStackTrace()
         }
+    }
+
+    override fun invalidate(id: String) {
+        compiledScripts.remove(id)
+    }
+
+    override fun invalidateByPrefix(prefix: String) {
+        compiledScripts.keys
+            .filter { it.startsWith(prefix) }
+            .forEach { compiledScripts.remove(it) }
+    }
+
+    override fun cacheStats(): ScriptCacheStats {
+        return ScriptCacheStats(
+            cacheSize = compiledScripts.size,
+            invokeHits = invokeHits.get(),
+            invokeMisses = invokeMisses.get(),
+            totalCompilations = totalCompilations.get(),
+            totalCompilationNanos = totalCompilationNanos.get()
+        )
     }
 }

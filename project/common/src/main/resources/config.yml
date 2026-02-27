@@ -1,0 +1,35 @@
+settings:
+  # Enable verbose debug output for lifecycle and runtime diagnostics.
+  debug: false
+
+  # Extra debug receivers (player names). Empty list means no whitelist filtering.
+  debug-users:
+    - "Y_Mical"
+    - "TabooLib"
+
+script:
+  preheat:
+    # Whether script preheat should be enabled during startup/reload.
+    enabled: true
+
+    # Available values: ON_ENABLE, ON_DEMAND.
+    strategy: "ON_ENABLE"
+
+    # Number of scripts compiled per batch during preheat.
+    # Recommended range: 1-256.
+    batch-size: 64
+
+operations:
+  watcher:
+    # Watch items folder and trigger incremental reload when files change.
+    enabled: true
+
+    # Delay before watcher reload task executes.
+    debounce-ticks: 20
+
+  performance-log:
+    # Enable periodic performance and cache metric output.
+    enabled: true
+
+    # Warn when a single item build exceeds this threshold.
+    slow-build-millis: 10

@@ -1,6 +1,7 @@
 package org.tabooproject.baikiruto.impl.script.handler
 
 import org.bukkit.command.CommandSender
+import org.tabooproject.baikiruto.core.ScriptCacheStats
 
 /**
  * Aiyatsbus
@@ -19,4 +20,10 @@ interface FluxonHandler {
     ): Any?
 
     fun preheat(source: String, id: String)
+
+    fun invalidate(id: String)
+
+    fun invalidateByPrefix(prefix: String)
+
+    fun cacheStats(): ScriptCacheStats
 }

@@ -31,21 +31,23 @@ object FunctionFolia {
             // Builder 模式
             exportRegistry.registerClass(TaskBuilder::class.java)
             registerExtension(FunctionExecutor.TaskBuilder::class.java)
-                .function("on", 1) {
-                    val builder = it.target ?: return@function null
-                    TaskBuilder(builder.env).apply {
+                .function("on", 1) { context ->
+                    val builder = context.target ?: return@function null
+                    val taskBuilder = TaskBuilder(builder.env).apply {
                         this.async = builder.async
                         this.delay = builder.delay
                         this.period = builder.period
-                    }.on(it.getArgument(0))
+                    }.on(context.getArgument(0))
+                    taskBuilder
                 }
-                .function("scheduler", 1) {
-                    val builder = it.target ?: return@function null
-                    TaskBuilder(builder.env).apply {
+                .function("scheduler", 1) { context ->
+                    val builder = context.target ?: return@function null
+                    val taskBuilder = TaskBuilder(builder.env).apply {
                         this.async = builder.async
                         this.delay = builder.delay
                         this.period = builder.period
-                    }.scheduler(it.getBoolean(0))
+                    }.scheduler(context.getBoolean(0))
+                    taskBuilder
                 }
         }
     }
