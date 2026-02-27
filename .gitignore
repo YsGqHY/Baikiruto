@@ -2,3 +2,8 @@
 .idea
 build
 bin
+
+CLAUDE.md
+AGENTS.md
+.claude
+.codex
