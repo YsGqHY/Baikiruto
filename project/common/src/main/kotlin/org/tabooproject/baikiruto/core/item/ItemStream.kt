@@ -1,5 +1,6 @@
 package org.tabooproject.baikiruto.core.item
 
+import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 
 interface ItemStream {
@@ -33,6 +34,33 @@ interface ItemStream {
     fun applyMeta(meta: Meta): ItemStream
 
     fun snapshotData(): ItemStreamData
+
+    fun isVanilla(): Boolean {
+        return false
+    }
+
+    fun isExtension(): Boolean {
+        return !isVanilla()
+    }
+
+    fun isOutdated(): Boolean {
+        return false
+    }
+
+    fun rebuild(player: Player? = null): ItemStream {
+        return this
+    }
+
+    fun rebuildToItemStack(player: Player? = null): ItemStack {
+        return rebuild(player).toItemStack()
+    }
+
+    fun lock(value: Boolean) {
+    }
+
+    fun isLocked(): Boolean {
+        return false
+    }
 
     fun toItemStack(): ItemStack
 }

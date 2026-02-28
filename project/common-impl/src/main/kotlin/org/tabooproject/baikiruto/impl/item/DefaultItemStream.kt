@@ -33,6 +33,7 @@ class DefaultItemStream(
     private val runtimeDataBacking = LinkedHashMap(initialRuntimeData)
     private val metaHistoryBacking = CopyOnWriteArrayList<String>()
     private val signalBacking = ConcurrentHashMap.newKeySet<ItemSignal>()
+    private var locked = false
     private var invocationContext: Map<String, Any?> = emptyMap()
 
     init {
@@ -57,16 +58,19 @@ class DefaultItemStream(
     }
 
     override fun setDisplayName(name: String?): ItemStream {
+        ensureUnlocked("setDisplayName")
         VersionAdapterService.applyDisplayName(backingItem, name)
         return this
     }
 
     override fun setLore(lines: List<String>): ItemStream {
+        ensureUnlocked("setLore")
         VersionAdapterService.applyLore(backingItem, lines)
         return this
     }
 
     override fun setRuntimeData(key: String, value: Any?): ItemStream {
+        ensureUnlocked("setRuntimeData")
         runtimeDataBacking[key] = value
         return this
     }
@@ -76,6 +80,7 @@ class DefaultItemStream(
     }
 
     override fun markSignal(signal: ItemSignal): ItemStream {
+        ensureUnlocked("markSignal")
         signalBacking += signal
         return this
     }
@@ -85,9 +90,60 @@ class DefaultItemStream(
     }
 
     override fun applyMeta(meta: Meta): ItemStream {
+        ensureUnlocked("applyMeta")
         meta.build(this)
         metaHistoryBacking += meta.id
         return this
+    }
+
+    override fun isVanilla(): Boolean {
+        return runCatching { Baikiruto.api().getItem(itemId) }
+            .getOrNull() == null
+    }
+
+    override fun isOutdated(): Boolean {
+        val item = runCatching { Baikiruto.api().getItem(itemId) }.getOrNull() ?: return false
+        val latestHash = if (item is DefaultItem) {
+            item.latestVersionHash()
+        } else {
+            item.build().versionHash
+        }
+        return latestHash != versionHash
+    }
+
+    override fun rebuild(player: Player?): ItemStream {
+        val item = runCatching { Baikiruto.api().getItem(itemId) }.getOrNull() ?: return this
+        val context = LinkedHashMap<String, Any?>().apply {
+            putAll(invocationContext)
+            val resolvedPlayer = player ?: invocationContext["player"] as? Player ?: invocationContext["sender"] as? Player
+            put("player", resolvedPlayer)
+            putIfAbsent("sender", resolvedPlayer)
+            put("ctx", LinkedHashMap(runtimeDataBacking))
+        }
+        val rebuilt = item.build(context)
+        runtimeDataBacking.forEach { (key, value) ->
+            rebuilt.setRuntimeData(key, value)
+        }
+        signalBacking.forEach { signal ->
+            rebuilt.markSignal(signal)
+        }
+        if (rebuilt is DefaultItemStream) {
+            rebuilt.rememberInvocationContext(context)
+            rebuilt.lock(locked)
+        }
+        return rebuilt
+    }
+
+    override fun rebuildToItemStack(player: Player?): ItemStack {
+        return rebuild(player).toItemStack()
+    }
+
+    override fun lock(value: Boolean) {
+        locked = value
+    }
+
+    override fun isLocked(): Boolean {
+        return locked
     }
 
     override fun snapshotData(): ItemStreamData {
@@ -102,6 +158,9 @@ class DefaultItemStream(
     }
 
     override fun toItemStack(): ItemStack {
+        if (locked) {
+            return backingItem.clone()
+        }
         val context = buildInvocationContext()
         val player = context["player"] as? Player
         ItemUniqueFeature.prepare(this, player)
@@ -145,6 +204,7 @@ class DefaultItemStream(
         providedItemRef: ItemStack?,
         providedItemBaseline: ItemStack?
     ) {
+        ensureUnlocked("syncScriptResult")
         when (result) {
             is ItemStack -> {
                 if (providedItemRef != null && providedItemBaseline != null && result === providedItemRef && result == providedItemBaseline) {
@@ -475,4 +535,8 @@ class DefaultItemStream(
         val scalar: Map<String, String>,
         val list: Map<String, List<String>>
     )
+
+    private fun ensureUnlocked(action: String) {
+        check(!locked) { "ItemStream[$itemId] is locked, cannot invoke $action." }
+    }
 }

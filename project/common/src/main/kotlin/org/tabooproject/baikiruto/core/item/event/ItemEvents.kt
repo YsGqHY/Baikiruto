@@ -1,6 +1,7 @@
 package org.tabooproject.baikiruto.core.item.event
 
 import org.bukkit.entity.Player
+import org.tabooproject.baikiruto.core.item.ItemScriptTrigger
 import org.tabooproject.baikiruto.core.item.ItemStream
 
 open class ItemLifecycleEvent(
@@ -61,3 +62,29 @@ class ItemUpdateEvent(
     val oldVersionHash: String,
     val newVersionHash: String
 ) : ItemLifecycleEvent(stream, player, null)
+
+class ItemActionTriggerEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>,
+    val trigger: ItemScriptTrigger
+) : ItemLifecycleEvent(stream, player, source, context) {
+
+    var save: Boolean = false
+}
+
+class ItemInventoryClickActionEvent(
+    val currentStream: ItemStream?,
+    val buttonStream: ItemStream?,
+    val player: Player,
+    val source: Any?,
+    val context: MutableMap<String, Any?> = linkedMapOf()
+) {
+
+    var cancelled: Boolean = false
+
+    var saveCurrent: Boolean = false
+
+    var saveButton: Boolean = false
+}

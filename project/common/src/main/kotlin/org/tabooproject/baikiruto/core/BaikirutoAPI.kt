@@ -5,6 +5,7 @@ import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemDisplay
 import org.tabooproject.baikiruto.core.item.ItemGroup
 import org.tabooproject.baikiruto.core.item.ItemHandler
+import org.tabooproject.baikiruto.core.item.ItemLoader
 import org.tabooproject.baikiruto.core.item.ItemManager
 import org.tabooproject.baikiruto.core.item.ItemModel
 import org.tabooproject.baikiruto.core.item.MetaFactory
@@ -28,6 +29,8 @@ interface BaikirutoAPI {
     fun getItemManager(): ItemManager
 
     fun getItemHandler(): ItemHandler
+
+    fun getItemLoader(): ItemLoader
 
     fun getItemRegistry(): Registry<Item>
 
@@ -91,5 +94,9 @@ interface BaikirutoAPI {
 
     fun getItemUniqueData(itemStack: ItemStack): Map<String, Any?>? {
         return getItemHandler().getItemUniqueData(itemStack)
+    }
+
+    fun reload() {
+        getItemLoader().reloadItems("api-reload")
     }
 }

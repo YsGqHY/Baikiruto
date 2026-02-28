@@ -7,6 +7,7 @@ import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemDisplay
 import org.tabooproject.baikiruto.core.item.ItemGroup
 import org.tabooproject.baikiruto.core.item.ItemHandler
+import org.tabooproject.baikiruto.core.item.ItemLoader
 import org.tabooproject.baikiruto.core.item.ItemManager
 import org.tabooproject.baikiruto.core.item.ItemModel
 import org.tabooproject.baikiruto.core.item.ItemSerializer
@@ -15,6 +16,7 @@ import org.tabooproject.baikiruto.core.item.ItemUpdater
 import org.tabooproject.baikiruto.core.item.Registry
 import org.tabooproject.baikiruto.core.item.event.ItemEventBus
 import org.tabooproject.baikiruto.impl.item.DefaultItemHandler
+import org.tabooproject.baikiruto.impl.item.DefaultItemLoader
 import org.tabooproject.baikiruto.impl.item.DefaultItemManager
 import org.tabooproject.baikiruto.impl.item.DefaultItemSerializer
 import org.tabooproject.baikiruto.impl.item.DefaultItemUpdater
@@ -33,6 +35,7 @@ class DefaultBaikirutoAPI : BaikirutoAPI {
 
     private val itemManager = DefaultItemManager()
     private val itemHandler = DefaultItemHandler(itemManager)
+    private val itemLoader = DefaultItemLoader
     private val itemSerializer = DefaultItemSerializer
     private val itemUpdater = DefaultItemUpdater
     private val itemEventBus = DefaultItemEventBus
@@ -52,6 +55,10 @@ class DefaultBaikirutoAPI : BaikirutoAPI {
 
     override fun getItemHandler(): ItemHandler {
         return itemHandler
+    }
+
+    override fun getItemLoader(): ItemLoader {
+        return itemLoader
     }
 
     override fun getItemRegistry(): Registry<Item> {

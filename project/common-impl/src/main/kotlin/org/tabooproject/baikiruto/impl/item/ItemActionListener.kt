@@ -3,6 +3,7 @@
 import org.bukkit.Bukkit
 import org.bukkit.ChatColor
 import org.bukkit.entity.Player
+import org.bukkit.event.Cancellable
 import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
@@ -18,6 +19,7 @@ import org.bukkit.event.player.PlayerItemBreakEvent
 import org.bukkit.event.player.PlayerItemConsumeEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerItemHeldEvent
+import org.bukkit.event.player.PlayerRespawnEvent
 import org.bukkit.event.player.PlayerSwapHandItemsEvent
 import org.bukkit.event.player.PlayerItemDamageEvent
 import org.bukkit.inventory.EquipmentSlot
@@ -26,6 +28,8 @@ import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemScriptTrigger
 import org.tabooproject.baikiruto.core.item.ItemStream
+import org.tabooproject.baikiruto.core.item.event.ItemActionTriggerEvent
+import org.tabooproject.baikiruto.core.item.event.ItemInventoryClickActionEvent
 import org.tabooproject.baikiruto.impl.item.feature.ItemCombatFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDurabilityFeature
@@ -43,7 +47,8 @@ object ItemActionListener {
         Bukkit.getOnlinePlayers().forEach { player ->
             player.inventory.contents.forEachIndexed { index, itemStack ->
                 val managed = resolve(itemStack) ?: return@forEachIndexed
-                if (dispatch(managed, listOf(ItemScriptTrigger.ASYNC_TICK), player, null)) {
+                val outcome = dispatch(managed, listOf(ItemScriptTrigger.ASYNC_TICK), player, null)
+                if (outcome.changed) {
                     player.inventory.setItem(index, managed.stream.toItemStack())
                 }
             }
@@ -52,18 +57,31 @@ object ItemActionListener {
 
     @SubscribeEvent
     fun onJoin(event: PlayerJoinEvent) {
+        Baikiruto.api().getItemUpdater().checkUpdate(event.player, event.player.inventory)
+        select(event.player)
+    }
+
+    @SubscribeEvent
+    fun onRespawn(event: PlayerRespawnEvent) {
+        Baikiruto.api().getItemUpdater().checkUpdate(event.player, event.player.inventory)
         select(event.player)
     }
 
     @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onChangeWorld(event: PlayerChangedWorldEvent) {
+        Baikiruto.api().getItemUpdater().checkUpdate(event.player, event.player.inventory)
         select(event.player)
     }
 
     @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onHeld(event: PlayerItemHeldEvent) {
         val managed = resolve(event.player.inventory.getItem(event.newSlot)) ?: return
-        if (dispatch(managed, listOf(ItemScriptTrigger.SELECT), event.player, event)) {
+        val outcome = dispatch(managed, listOf(ItemScriptTrigger.SELECT), event.player, event)
+        if (outcome.cancelled) {
+            event.isCancelled = true
+            return
+        }
+        if (outcome.changed) {
             event.player.inventory.setItem(event.newSlot, managed.stream.toItemStack())
         }
     }
@@ -99,8 +117,15 @@ object ItemActionListener {
             event.isCancelled = true
             return
         }
-        if (dispatch(managed, triggers, event.player, event)) {
+        val outcome = dispatch(managed, triggers, event.player, event)
+        if (outcome.cancelled) {
+            event.isCancelled = true
+            return
+        }
+        if (outcome.handled) {
             ItemCooldownFeature.applyCooldown(managed.stream, event.player, triggers)
+        }
+        if (outcome.changed) {
             val itemStack = managed.stream.toItemStack()
             if (event.hand == EquipmentSlot.OFF_HAND) {
                 event.player.inventory.setItemInOffHand(itemStack)
@@ -131,8 +156,15 @@ object ItemActionListener {
             event.isCancelled = true
             return
         }
-        if (dispatch(managed, triggers, event.player, event)) {
+        val outcome = dispatch(managed, triggers, event.player, event)
+        if (outcome.cancelled) {
+            event.isCancelled = true
+            return
+        }
+        if (outcome.handled) {
             ItemCooldownFeature.applyCooldown(managed.stream, event.player, triggers)
+        }
+        if (outcome.changed) {
             event.player.inventory.setItemInMainHand(managed.stream.toItemStack())
         }
     }
@@ -156,8 +188,15 @@ object ItemActionListener {
             event.isCancelled = true
             return
         }
-        if (dispatch(managed, triggers, player, event)) {
+        val outcome = dispatch(managed, triggers, player, event)
+        if (outcome.cancelled) {
+            event.isCancelled = true
+            return
+        }
+        if (outcome.handled) {
             ItemCooldownFeature.applyCooldown(managed.stream, player, triggers)
+        }
+        if (outcome.changed) {
             player.inventory.setItemInMainHand(managed.stream.toItemStack())
         }
     }
@@ -210,7 +249,12 @@ object ItemActionListener {
             }
             OwnershipValidation.Pass -> Unit
         }
-        if (dispatch(managed, listOf(ItemScriptTrigger.BLOCK_BREAK), player, event)) {
+        val outcome = dispatch(managed, listOf(ItemScriptTrigger.BLOCK_BREAK), player, event)
+        if (outcome.cancelled) {
+            event.isCancelled = true
+            return
+        }
+        if (outcome.changed) {
             player.inventory.setItemInMainHand(managed.stream.toItemStack())
         }
     }
@@ -228,12 +272,15 @@ object ItemActionListener {
         if (durability.applied) {
             event.isCancelled = true
         }
-        val handled = dispatch(managed, listOf(ItemScriptTrigger.DAMAGE), event.player, event)
+        val outcome = dispatch(managed, listOf(ItemScriptTrigger.DAMAGE), event.player, event)
+        if (outcome.cancelled) {
+            event.isCancelled = true
+        }
         if (durability.destroyed) {
             replacePlayerItem(event.player, event.item, ItemDurabilityFeature.resolveDestroyedItem(managed.stream, event.player))
             return
         }
-        if (handled || durability.applied) {
+        if (outcome.changed || durability.applied) {
             replacePlayerItem(event.player, event.item, managed.stream.toItemStack())
         }
     }
@@ -261,9 +308,15 @@ object ItemActionListener {
             event.isCancelled = true
             return
         }
-        val handled = dispatch(managed, triggers, event.player, event)
-        if (handled) {
+        val outcome = dispatch(managed, triggers, event.player, event)
+        if (outcome.cancelled) {
+            event.isCancelled = true
+            return
+        }
+        if (outcome.handled) {
             ItemCooldownFeature.applyCooldown(managed.stream, event.player, triggers)
+        }
+        if (outcome.changed) {
             val updated = managed.stream.toItemStack()
             if (event.player.inventory.itemInMainHand == event.item) {
                 event.player.inventory.setItemInMainHand(updated)
@@ -279,12 +332,22 @@ object ItemActionListener {
     @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onSwap(event: PlayerSwapHandItemsEvent) {
         resolve(event.mainHandItem)?.let { managed ->
-            if (dispatch(managed, listOf(ItemScriptTrigger.SWAP_TO_MAINHAND), event.player, event)) {
+            val outcome = dispatch(managed, listOf(ItemScriptTrigger.SWAP_TO_MAINHAND), event.player, event)
+            if (outcome.cancelled) {
+                event.isCancelled = true
+                return
+            }
+            if (outcome.changed) {
                 event.mainHandItem = managed.stream.toItemStack()
             }
         }
         resolve(event.offHandItem)?.let { managed ->
-            if (dispatch(managed, listOf(ItemScriptTrigger.SWAP_TO_OFFHAND), event.player, event)) {
+            val outcome = dispatch(managed, listOf(ItemScriptTrigger.SWAP_TO_OFFHAND), event.player, event)
+            if (outcome.cancelled) {
+                event.isCancelled = true
+                return
+            }
+            if (outcome.changed) {
                 event.offHandItem = managed.stream.toItemStack()
             }
         }
@@ -293,7 +356,12 @@ object ItemActionListener {
     @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onDrop(event: PlayerDropItemEvent) {
         val managed = resolve(event.itemDrop.itemStack) ?: return
-        if (dispatch(managed, listOf(ItemScriptTrigger.DROP), event.player, event)) {
+        val outcome = dispatch(managed, listOf(ItemScriptTrigger.DROP), event.player, event)
+        if (outcome.cancelled) {
+            event.isCancelled = true
+            return
+        }
+        if (outcome.changed) {
             event.itemDrop.itemStack = managed.stream.toItemStack()
         }
     }
@@ -302,7 +370,12 @@ object ItemActionListener {
     fun onPickup(event: EntityPickupItemEvent) {
         val player = event.entity as? Player ?: return
         val managed = resolve(event.item.itemStack) ?: return
-        if (dispatch(managed, listOf(ItemScriptTrigger.PICKUP), player, event)) {
+        val outcome = dispatch(managed, listOf(ItemScriptTrigger.PICKUP), player, event)
+        if (outcome.cancelled) {
+            event.isCancelled = true
+            return
+        }
+        if (outcome.changed) {
             event.item.itemStack = managed.stream.toItemStack()
         }
     }
@@ -312,15 +385,54 @@ object ItemActionListener {
         val player = event.whoClicked as? Player ?: return
         val currentManaged = resolve(event.currentItem)
         val buttonManaged = if (event.click == ClickType.NUMBER_KEY) resolve(player.inventory.getItem(event.hotbarButton)) else null
-        var changed = false
+        val context = linkedMapOf<String, Any?>(
+            "player" to player,
+            "sender" to player,
+            "event" to event
+        )
+        val clickEvent = ItemInventoryClickActionEvent(
+            currentStream = currentManaged?.stream,
+            buttonStream = buttonManaged?.stream,
+            player = player,
+            source = event,
+            context = context
+        )
+        Baikiruto.api().getItemEventBus().post(clickEvent)
+        if (clickEvent.cancelled) {
+            event.isCancelled = true
+            return
+        }
+        var changed = clickEvent.saveCurrent || clickEvent.saveButton
         currentManaged?.let { managed ->
-            if (dispatch(managed, listOf(ItemScriptTrigger.INVENTORY_CLICK), player, event)) {
+            val outcome = dispatch(
+                managed = managed,
+                triggers = listOf(ItemScriptTrigger.INVENTORY_CLICK),
+                player = player,
+                event = event,
+                contextSeed = clickEvent.context
+            )
+            if (outcome.cancelled) {
+                event.isCancelled = true
+                return
+            }
+            if (outcome.changed) {
                 event.currentItem = managed.stream.toItemStack()
                 changed = true
             }
         }
         buttonManaged?.let { managed ->
-            if (dispatch(managed, listOf(ItemScriptTrigger.INVENTORY_CLICK), player, event)) {
+            val outcome = dispatch(
+                managed = managed,
+                triggers = listOf(ItemScriptTrigger.INVENTORY_CLICK),
+                player = player,
+                event = event,
+                contextSeed = clickEvent.context
+            )
+            if (outcome.cancelled) {
+                event.isCancelled = true
+                return
+            }
+            if (outcome.changed) {
                 player.inventory.setItem(event.hotbarButton, managed.stream.toItemStack())
                 changed = true
             }
@@ -333,7 +445,8 @@ object ItemActionListener {
     private fun select(player: Player) {
         player.inventory.contents.forEachIndexed { index, itemStack ->
             val managed = resolve(itemStack) ?: return@forEachIndexed
-            if (dispatch(managed, listOf(ItemScriptTrigger.SELECT), player, null)) {
+            val outcome = dispatch(managed, listOf(ItemScriptTrigger.SELECT), player, null)
+            if (outcome.changed) {
                 player.inventory.setItem(index, managed.stream.toItemStack())
             }
         }
@@ -352,26 +465,51 @@ object ItemActionListener {
         managed: ManagedItem,
         triggers: List<ItemScriptTrigger>,
         player: Player?,
-        event: Any?
-    ): Boolean {
+        event: Any?,
+        contextSeed: Map<String, Any?> = emptyMap()
+    ): DispatchOutcome {
         val locale = player?.let { resolveLocale(it) }
-        val context = linkedMapOf<String, Any?>(
-            "player" to player,
-            "sender" to player,
-            "event" to event
-        )
+        val baseContext = linkedMapOf<String, Any?>()
+        baseContext.putAll(contextSeed)
+        baseContext.putIfAbsent("player", player)
+        baseContext.putIfAbsent("sender", player)
+        baseContext.putIfAbsent("event", event)
         if (!locale.isNullOrBlank()) {
-            context["locale"] = locale
+            baseContext["locale"] = locale
         }
+        val cancellable = event as? Cancellable
         var handled = false
+        var save = false
+        var cancelled = false
         triggers.forEach { trigger ->
-            if (!ItemScriptActionDispatcher.hasAction(managed.item, trigger, context)) {
+            val triggerContext = LinkedHashMap(baseContext)
+            val triggerEvent = ItemActionTriggerEvent(
+                stream = managed.stream,
+                player = player,
+                source = event,
+                context = triggerContext,
+                trigger = trigger
+            )
+            Baikiruto.api().getItemEventBus().post(triggerEvent)
+            if (triggerEvent.cancelled) {
+                cancelled = true
+                cancellable?.isCancelled = true
                 return@forEach
             }
-            ItemScriptActionDispatcher.dispatch(managed.item, trigger, managed.stream, context)
+            if (triggerEvent.save) {
+                save = true
+            }
+            if (!ItemScriptActionDispatcher.hasAction(managed.item, trigger, triggerEvent.context)) {
+                return@forEach
+            }
+            ItemScriptActionDispatcher.dispatch(managed.item, trigger, managed.stream, triggerEvent.context)
             handled = true
         }
-        return handled
+        return DispatchOutcome(
+            handled = handled,
+            save = save,
+            cancelled = cancelled
+        )
     }
 
     private fun resolveLocale(player: Player): String? {
@@ -486,6 +624,16 @@ object ItemActionListener {
         val item: Item,
         val stream: ItemStream
     )
+
+    private data class DispatchOutcome(
+        val handled: Boolean,
+        val save: Boolean,
+        val cancelled: Boolean
+    ) {
+
+        val changed: Boolean
+            get() = handled || save
+    }
 
     private data class TrackedItem(
         val slot: String,
