@@ -18,6 +18,9 @@ interface Item {
     val scripts: ItemScriptHooks
         get() = ItemScriptHooks()
 
+    val eventData: Map<String, Any?>
+        get() = emptyMap()
+
     fun build(context: Map<String, Any?> = emptyMap()): ItemStream
 
     fun drop(stream: ItemStream, context: Map<String, Any?> = emptyMap()) {

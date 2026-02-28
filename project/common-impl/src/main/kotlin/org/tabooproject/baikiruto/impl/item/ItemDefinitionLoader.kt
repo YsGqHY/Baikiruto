@@ -9,7 +9,6 @@ import org.tabooproject.baikiruto.core.item.ItemGroup
 import org.tabooproject.baikiruto.core.item.ItemManager
 import org.tabooproject.baikiruto.core.item.ItemModel
 import org.tabooproject.baikiruto.core.item.ItemScriptHooks
-import org.tabooproject.baikiruto.core.item.ItemScriptTrigger
 import org.tabooproject.baikiruto.core.item.Meta
 import org.tabooproject.baikiruto.core.item.event.PluginReloadEvent
 import org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature
@@ -418,6 +417,7 @@ object ItemDefinitionLoader {
             modelIds = modelIds,
             metas = parseMetas(section, manager),
             scripts = parseMergedHooks(section, models),
+            eventData = parseMergedEventData(section, models),
             defaultRuntimeData = mergeRuntimeData(
                 modelDefaults,
                 displayRuntime,
@@ -510,6 +510,30 @@ object ItemDefinitionLoader {
         return buildScriptHooks(scripts, localizedScripts)
     }
 
+    private fun parseMergedEventData(section: ConfigurationSection, models: List<ItemModel>): Map<String, Any?> {
+        val merged = linkedMapOf<String, Any?>()
+        models.forEach { model ->
+            merged.putAll(parseEventData(anyToMap(model.data["event"])))
+        }
+        merged.putAll(parseEventData(section.getConfigurationSection("event")))
+        return merged
+    }
+
+    private fun parseEventData(section: ConfigurationSection?): Map<String, Any?> {
+        if (section == null) {
+            return emptyMap()
+        }
+        val dataSection = section.getConfigurationSection("data") ?: return emptyMap()
+        return sectionToMap(dataSection)
+    }
+
+    private fun parseEventData(source: Map<String, Any?>): Map<String, Any?> {
+        if (source.isEmpty()) {
+            return emptyMap()
+        }
+        return anyToMap(source["data"])
+    }
+
     private fun collectScriptEntriesFromSection(
         section: taboolib.library.configuration.ConfigurationSection?,
         target: MutableMap<String, String?>
@@ -599,16 +623,16 @@ object ItemDefinitionLoader {
     ): ItemScriptHooks {
         val normalized = linkedMapOf<String, String?>()
         for ((key, source) in scripts) {
-            val trigger = ItemScriptTrigger.fromKey(key) ?: continue
-            normalized[trigger.name.lowercase(Locale.ENGLISH)] = source
+            val normalizedKey = key.trim().takeIf { it.isNotEmpty() } ?: continue
+            normalized[normalizedKey] = source
         }
         val normalizedLocalized = linkedMapOf<String, Map<String, String?>>()
         for ((locale, entries) in localizedScripts) {
             val normalizedLocale = normalizeLocaleKey(locale) ?: continue
             val localeEntries = linkedMapOf<String, String?>()
             for ((key, source) in entries) {
-                val trigger = ItemScriptTrigger.fromKey(key) ?: continue
-                localeEntries[trigger.name.lowercase(Locale.ENGLISH)] = source
+                val normalizedKey = key.trim().takeIf { it.isNotEmpty() } ?: continue
+                localeEntries[normalizedKey] = source
             }
             if (localeEntries.isNotEmpty()) {
                 normalizedLocalized[normalizedLocale] = localeEntries

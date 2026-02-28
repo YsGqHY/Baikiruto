@@ -64,4 +64,22 @@ class ItemScriptHooksTest {
         assertEquals("enBuild()", hooks.source(ItemScriptTrigger.BUILD, "en_US"))
         assertEquals("defaultUse()", hooks.source(ItemScriptTrigger.USE))
     }
+
+    @Test
+    fun `should parse cancel marker from trigger key`() {
+        val hooks = ItemScriptHooks.from(
+            raw = mapOf(
+                "on_use!!" to "cancelUse()",
+                "on_build" to "build()"
+            ),
+            i18nRaw = mapOf(
+                "zh_cn" to mapOf("on_interact!!" to "cancelInteract()")
+            )
+        )
+        assertTrue(hooks.shouldCancel(ItemScriptTrigger.USE))
+        assertTrue(hooks.shouldCancel(ItemScriptTrigger.INTERACT, "zh-CN"))
+        assertTrue(hooks.shouldCancel(ItemScriptTrigger.USE, "zh-CN"))
+        assertEquals("cancelUse()", hooks.source(ItemScriptTrigger.USE))
+        assertEquals("cancelInteract()", hooks.source(ItemScriptTrigger.INTERACT, "zh_cn"))
+    }
 }

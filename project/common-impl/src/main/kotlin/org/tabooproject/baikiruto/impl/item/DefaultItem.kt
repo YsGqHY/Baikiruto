@@ -25,6 +25,7 @@ class DefaultItem(
     override val modelIds: List<String> = emptyList(),
     override val metas: List<Meta> = emptyList(),
     override val scripts: ItemScriptHooks = ItemScriptHooks(),
+    override val eventData: Map<String, Any?> = emptyMap(),
     private val defaultRuntimeData: Map<String, Any?> = emptyMap()
 ) : Item {
 
@@ -35,9 +36,10 @@ class DefaultItem(
     override fun build(context: Map<String, Any?>): ItemStream {
         val startAt = System.nanoTime()
         val executionContext = LinkedHashMap(defaultRuntimeData)
+        executionContext.putAll(eventData)
         executionContext.putAll(context)
-        val player = context["player"] as? Player
-        val locale = resolveLocale(context, player)
+        val player = executionContext["player"] as? Player
+        val locale = resolveLocale(executionContext, player)
         val stream = DefaultItemStream(
             backingItem = template.clone(),
             itemId = id,
@@ -83,7 +85,10 @@ class DefaultItem(
     }
 
     override fun drop(stream: ItemStream, context: Map<String, Any?>) {
-        val locale = resolveLocale(context, context["player"] as? Player)
+        val executionContext = LinkedHashMap<String, Any?>()
+        executionContext.putAll(eventData)
+        executionContext.putAll(context)
+        val locale = resolveLocale(executionContext, executionContext["player"] as? Player)
         metas.reversed().forEach { meta ->
             try {
                 meta.drop(stream)
@@ -92,13 +97,19 @@ class DefaultItem(
                     trigger = ItemScriptTrigger.DROP,
                     source = meta.scripts.source(ItemScriptTrigger.DROP, locale),
                     stream = stream,
-                    context = context
+                    context = executionContext
                 )
             } catch (ex: Throwable) {
                 BaikirutoLog.scriptRuntimeFailed("$id:meta:${meta.id}:drop", ex)
             }
         }
-        ItemScriptExecutor.execute(id, ItemScriptTrigger.DROP, scripts.source(ItemScriptTrigger.DROP, locale), stream, context)
+        ItemScriptExecutor.execute(
+            id,
+            ItemScriptTrigger.DROP,
+            scripts.source(ItemScriptTrigger.DROP, locale),
+            stream,
+            executionContext
+        )
     }
 
     private fun resolveLocale(context: Map<String, Any?>, player: Player?): String? {
