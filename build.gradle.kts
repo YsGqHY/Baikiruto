@@ -33,6 +33,7 @@ subprojects {
     // 仓库
     repositories {
         mavenCentral()
+        maven("https://nexus.maplex.top/repository/maven-public/")
     }
     // 依赖
     dependencies {

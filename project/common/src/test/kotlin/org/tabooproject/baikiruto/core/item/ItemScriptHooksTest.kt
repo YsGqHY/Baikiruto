@@ -49,4 +49,19 @@ class ItemScriptHooksTest {
         assertTrue(scripts.containsKey("demo:build"))
         assertTrue(scripts.containsKey("demo:meta:trace:build"))
     }
+
+    @Test
+    fun `should resolve i18n scripts with fallback`() {
+        val hooks = ItemScriptHooks.from(
+            raw = mapOf("on_use" to "defaultUse()"),
+            i18nRaw = mapOf(
+                "zh_cn" to mapOf("on_use" to "zhUse()"),
+                "en_us" to mapOf("on_build" to "enBuild()")
+            )
+        )
+        assertEquals("zhUse()", hooks.source(ItemScriptTrigger.USE, "zh-CN"))
+        assertEquals("defaultUse()", hooks.source(ItemScriptTrigger.USE, "en-US"))
+        assertEquals("enBuild()", hooks.source(ItemScriptTrigger.BUILD, "en_US"))
+        assertEquals("defaultUse()", hooks.source(ItemScriptTrigger.USE))
+    }
 }

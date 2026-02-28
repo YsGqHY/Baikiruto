@@ -354,20 +354,33 @@ object ItemActionListener {
         player: Player?,
         event: Any?
     ): Boolean {
+        val locale = player?.let { resolveLocale(it) }
         val context = linkedMapOf<String, Any?>(
             "player" to player,
             "sender" to player,
             "event" to event
         )
+        if (!locale.isNullOrBlank()) {
+            context["locale"] = locale
+        }
         var handled = false
         triggers.forEach { trigger ->
-            if (!ItemScriptActionDispatcher.hasAction(managed.item, trigger)) {
+            if (!ItemScriptActionDispatcher.hasAction(managed.item, trigger, context)) {
                 return@forEach
             }
             ItemScriptActionDispatcher.dispatch(managed.item, trigger, managed.stream, context)
             handled = true
         }
         return handled
+    }
+
+    private fun resolveLocale(player: Player): String? {
+        return runCatching { player.locale }
+            .getOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.replace('-', '_')
+            ?.lowercase()
     }
 
     private fun replacePlayerItem(player: Player, source: ItemStack, replacement: ItemStack) {

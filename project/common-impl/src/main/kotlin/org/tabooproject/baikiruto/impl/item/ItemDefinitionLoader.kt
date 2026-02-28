@@ -11,6 +11,7 @@ import org.tabooproject.baikiruto.core.item.ItemModel
 import org.tabooproject.baikiruto.core.item.ItemScriptHooks
 import org.tabooproject.baikiruto.core.item.ItemScriptTrigger
 import org.tabooproject.baikiruto.core.item.Meta
+import org.tabooproject.baikiruto.core.item.event.PluginReloadEvent
 import org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
@@ -71,6 +72,10 @@ object ItemDefinitionLoader {
         parsedItemFiles.flatMap { parseModels(it.conf) }.forEach { modelRegistry.register(it.id, it) }
         parsedDisplayFiles.flatMap { parseDisplays(it.conf) }.forEach { displayRegistry.register(it.id, it) }
         parsedItemFiles.flatMap { parseDisplays(it.conf) }.forEach { displayRegistry.register(it.id, it) }
+        PluginReloadEvent.Display(
+            source = source,
+            loadedDisplays = displayRegistry.keys().size
+        ).call()
 
         val loadedItems = parsedItemFiles.flatMap { parsed ->
             parseItems(parsed, manager, itemsDir)
@@ -82,6 +87,12 @@ object ItemDefinitionLoader {
             itemRegistry.register(item.id, item)
             loadedItemIds += item.id
         }
+        PluginReloadEvent.Item(
+            source = source,
+            loadedItems = loadedItems.size,
+            loadedModels = modelRegistry.keys().size,
+            loadedGroups = groupRegistry.keys().size
+        ).call()
         ItemScriptPreheatService.preheatIfEnabled(loadedItems)
 
         info(
@@ -431,12 +442,14 @@ object ItemDefinitionLoader {
             val scripts = if (metaSection != null) {
                 parseHooks(
                     metaSection.getConfigurationSection("scripts"),
-                    metaSection.getConfigurationSection("event")
+                    metaSection.getConfigurationSection("event"),
+                    i18nSection = metaSection.getConfigurationSection("i18n")
                 )
             } else {
                 parseHooksFromMaps(
                     anyToMap(source["scripts"]),
-                    anyToMap(source["event"])
+                    anyToMap(source["event"]),
+                    i18nSources = listOf(anyToMap(source["i18n"]))
                 )
             }
 
@@ -485,18 +498,16 @@ object ItemDefinitionLoader {
 
     private fun parseMergedHooks(section: ConfigurationSection, models: List<ItemModel>): ItemScriptHooks {
         val scripts = linkedMapOf<String, String?>()
+        val localizedScripts = linkedMapOf<String, MutableMap<String, String?>>()
         models.forEach { model ->
             collectScriptEntriesFromMap(model.data["scripts"] as? Map<*, *>, scripts)
             collectScriptEntriesFromMap(model.data["event"] as? Map<*, *>, scripts)
+            collectI18nScriptEntriesFromMap(model.data["i18n"] as? Map<*, *>, localizedScripts)
         }
         collectScriptEntriesFromSection(section.getConfigurationSection("scripts"), scripts)
         collectScriptEntriesFromSection(section.getConfigurationSection("event"), scripts)
-        val normalized = linkedMapOf<String, String?>()
-        scripts.forEach { (key, source) ->
-            val trigger = ItemScriptTrigger.fromKey(key) ?: return@forEach
-            normalized[trigger.name.lowercase(Locale.ENGLISH)] = source
-        }
-        return ItemScriptHooks.from(normalized)
+        collectI18nScriptEntriesFromSection(section.getConfigurationSection("i18n"), localizedScripts)
+        return buildScriptHooks(scripts, localizedScripts)
     }
 
     private fun collectScriptEntriesFromSection(
@@ -532,17 +543,86 @@ object ItemDefinitionLoader {
         }
     }
 
-    private fun parseHooksFromMaps(vararg sources: Map<String, Any?>): ItemScriptHooks {
+    private fun collectI18nScriptEntriesFromSection(
+        i18nSection: taboolib.library.configuration.ConfigurationSection?,
+        target: MutableMap<String, MutableMap<String, String?>>
+    ) {
+        if (i18nSection == null) {
+            return
+        }
+        i18nSection.getKeys(false).forEach { localeKey ->
+            val localeSection = i18nSection.getConfigurationSection(localeKey) ?: return@forEach
+            val locale = normalizeLocaleKey(localeKey) ?: return@forEach
+            val localeScripts = target.getOrPut(locale) { linkedMapOf() }
+            collectScriptEntriesFromSection(localeSection.getConfigurationSection("scripts"), localeScripts)
+            collectScriptEntriesFromSection(localeSection.getConfigurationSection("event"), localeScripts)
+        }
+    }
+
+    private fun collectI18nScriptEntriesFromMap(
+        i18nMap: Map<*, *>?,
+        target: MutableMap<String, MutableMap<String, String?>>
+    ) {
+        if (i18nMap == null) {
+            return
+        }
+        i18nMap.forEach { (localeKey, rawSection) ->
+            val locale = normalizeLocaleKey(localeKey?.toString()) ?: return@forEach
+            val section = anyToMap(rawSection)
+            if (section.isEmpty()) {
+                return@forEach
+            }
+            val localeScripts = target.getOrPut(locale) { linkedMapOf() }
+            collectScriptEntriesFromMap(anyToMap(section["scripts"]), localeScripts)
+            collectScriptEntriesFromMap(anyToMap(section["event"]), localeScripts)
+        }
+    }
+
+    private fun parseHooksFromMaps(
+        vararg sources: Map<String, Any?>,
+        i18nSources: List<Map<String, Any?>> = emptyList()
+    ): ItemScriptHooks {
         val scripts = linkedMapOf<String, String?>()
+        val localizedScripts = linkedMapOf<String, MutableMap<String, String?>>()
         sources.forEach { source ->
             collectScriptEntriesFromMap(source, scripts)
         }
-        val normalized = linkedMapOf<String, String?>()
-        scripts.forEach { (key, script) ->
-            val trigger = ItemScriptTrigger.fromKey(key) ?: return@forEach
-            normalized[trigger.name.lowercase(Locale.ENGLISH)] = script
+        i18nSources.forEach { source ->
+            collectI18nScriptEntriesFromMap(source, localizedScripts)
         }
-        return ItemScriptHooks.from(normalized)
+        return buildScriptHooks(scripts, localizedScripts)
+    }
+
+    private fun buildScriptHooks(
+        scripts: Map<String, String?>,
+        localizedScripts: Map<String, Map<String, String?>>
+    ): ItemScriptHooks {
+        val normalized = linkedMapOf<String, String?>()
+        for ((key, source) in scripts) {
+            val trigger = ItemScriptTrigger.fromKey(key) ?: continue
+            normalized[trigger.name.lowercase(Locale.ENGLISH)] = source
+        }
+        val normalizedLocalized = linkedMapOf<String, Map<String, String?>>()
+        for ((locale, entries) in localizedScripts) {
+            val normalizedLocale = normalizeLocaleKey(locale) ?: continue
+            val localeEntries = linkedMapOf<String, String?>()
+            for ((key, source) in entries) {
+                val trigger = ItemScriptTrigger.fromKey(key) ?: continue
+                localeEntries[trigger.name.lowercase(Locale.ENGLISH)] = source
+            }
+            if (localeEntries.isNotEmpty()) {
+                normalizedLocalized[normalizedLocale] = localeEntries
+            }
+        }
+        return ItemScriptHooks.from(normalized, normalizedLocalized)
+    }
+
+    private fun normalizeLocaleKey(source: String?): String? {
+        return source
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.replace('-', '_')
+            ?.lowercase(Locale.ENGLISH)
     }
 
     private fun mergeModelRuntimeData(models: List<ItemModel>): Map<String, Any?> {
@@ -1156,6 +1236,15 @@ object ItemDefinitionLoader {
         section.getString("signature")
             ?.takeIf { it.isNotBlank() }
             ?.let { effects["skull-signature"] = it }
+        section.getString("head-database")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { effects["skull-head-database"] = normalizeHeadDatabaseId(it) }
+        section.getString("head_database")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { effects["skull-head-database"] = normalizeHeadDatabaseId(it) }
+        section.getString("hdb")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { effects["skull-head-database"] = normalizeHeadDatabaseId(it) }
         return effects
     }
 
@@ -1169,7 +1258,19 @@ object ItemDefinitionLoader {
         stringValue(section["base64"])?.let { effects["skull-texture"] = it }
         stringValue(section["url"])?.let { effects["skull-url"] = it }
         stringValue(section["signature"])?.let { effects["skull-signature"] = it }
+        stringValue(section["head-database"])?.let { effects["skull-head-database"] = normalizeHeadDatabaseId(it) }
+        stringValue(section["head_database"])?.let { effects["skull-head-database"] = normalizeHeadDatabaseId(it) }
+        stringValue(section["hdb"])?.let { effects["skull-head-database"] = normalizeHeadDatabaseId(it) }
         return effects
+    }
+
+    private fun normalizeHeadDatabaseId(raw: String): String {
+        val value = raw.trim()
+        return if (value.startsWith("hdb:", true)) {
+            value.substringAfter(':').trim()
+        } else {
+            value
+        }
     }
 
     private fun parseSpawner(section: ConfigurationSection?): Map<String, Any?> {
@@ -1825,8 +1926,12 @@ object ItemDefinitionLoader {
         }
     }
 
-    private fun parseHooks(vararg sections: taboolib.library.configuration.ConfigurationSection?): ItemScriptHooks {
+    private fun parseHooks(
+        vararg sections: taboolib.library.configuration.ConfigurationSection?,
+        i18nSection: taboolib.library.configuration.ConfigurationSection? = null
+    ): ItemScriptHooks {
         val scripts = linkedMapOf<String, String?>()
+        val localizedScripts = linkedMapOf<String, MutableMap<String, String?>>()
         sections.filterNotNull().forEach { section ->
             section.getKeys(false).forEach { key ->
                 val child = section.getConfigurationSection(key)
@@ -1837,11 +1942,7 @@ object ItemDefinitionLoader {
                 }
             }
         }
-        val normalized = linkedMapOf<String, String?>()
-        scripts.forEach { (key, source) ->
-            val trigger = ItemScriptTrigger.fromKey(key) ?: return@forEach
-            normalized[trigger.name.lowercase(Locale.ENGLISH)] = source
-        }
-        return ItemScriptHooks.from(normalized)
+        collectI18nScriptEntriesFromSection(i18nSection, localizedScripts)
+        return buildScriptHooks(scripts, localizedScripts)
     }
 }

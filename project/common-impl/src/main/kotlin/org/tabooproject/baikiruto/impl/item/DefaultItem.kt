@@ -1,5 +1,6 @@
 package org.tabooproject.baikiruto.impl.item
 
+import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.core.item.Item
@@ -35,7 +36,8 @@ class DefaultItem(
         val startAt = System.nanoTime()
         val executionContext = LinkedHashMap(defaultRuntimeData)
         executionContext.putAll(context)
-        val player = context["player"] as? org.bukkit.entity.Player
+        val player = context["player"] as? Player
+        val locale = resolveLocale(context, player)
         val stream = DefaultItemStream(
             backingItem = template.clone(),
             itemId = id,
@@ -47,14 +49,20 @@ class DefaultItem(
         if (preEvent.cancelled) {
             return stream
         }
-        ItemScriptExecutor.execute(id, ItemScriptTrigger.BUILD, scripts.source(ItemScriptTrigger.BUILD), stream, executionContext)
+        ItemScriptExecutor.execute(
+            id,
+            ItemScriptTrigger.BUILD,
+            scripts.source(ItemScriptTrigger.BUILD, locale),
+            stream,
+            executionContext
+        )
         metas.forEach { meta ->
             try {
                 stream.applyMeta(meta)
                 ItemScriptExecutor.execute(
                     itemId = "$id:meta:${meta.id}",
                     trigger = ItemScriptTrigger.BUILD,
-                    source = meta.scripts.source(ItemScriptTrigger.BUILD),
+                    source = meta.scripts.source(ItemScriptTrigger.BUILD, locale),
                     stream = stream,
                     context = executionContext
                 )
@@ -75,13 +83,14 @@ class DefaultItem(
     }
 
     override fun drop(stream: ItemStream, context: Map<String, Any?>) {
+        val locale = resolveLocale(context, context["player"] as? Player)
         metas.reversed().forEach { meta ->
             try {
                 meta.drop(stream)
                 ItemScriptExecutor.execute(
                     itemId = "$id:meta:${meta.id}",
                     trigger = ItemScriptTrigger.DROP,
-                    source = meta.scripts.source(ItemScriptTrigger.DROP),
+                    source = meta.scripts.source(ItemScriptTrigger.DROP, locale),
                     stream = stream,
                     context = context
                 )
@@ -89,6 +98,23 @@ class DefaultItem(
                 BaikirutoLog.scriptRuntimeFailed("$id:meta:${meta.id}:drop", ex)
             }
         }
-        ItemScriptExecutor.execute(id, ItemScriptTrigger.DROP, scripts.source(ItemScriptTrigger.DROP), stream, context)
+        ItemScriptExecutor.execute(id, ItemScriptTrigger.DROP, scripts.source(ItemScriptTrigger.DROP, locale), stream, context)
+    }
+
+    private fun resolveLocale(context: Map<String, Any?>, player: Player?): String? {
+        val direct = context["locale"] as? String
+        if (!direct.isNullOrBlank()) {
+            return normalizeLocale(direct)
+        }
+        val fallbackPlayer = player ?: context["sender"] as? Player
+        return normalizeLocale(runCatching { fallbackPlayer?.locale }.getOrNull())
+    }
+
+    private fun normalizeLocale(value: String?): String? {
+        return value
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.replace('-', '_')
+            ?.lowercase()
     }
 }

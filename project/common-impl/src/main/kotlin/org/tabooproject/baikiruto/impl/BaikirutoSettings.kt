@@ -44,12 +44,51 @@ object BaikirutoSettings {
     @ConfigNode("operations.performance-log.slow-build-millis")
     var slowBuildMillis = 10L
 
+    @ConfigNode("operations.hook.mythic.enabled")
+    var mythicHookEnabled = true
+
+    @ConfigNode("operations.hook.attribute-plus.enabled")
+    var attributePlusHookEnabled = true
+
+    @ConfigNode("operations.hook.head-database.enabled")
+    var headDatabaseHookEnabled = true
+
+    @ConfigNode("database.enabled")
+    var databaseEnabled = false
+
+    @ConfigNode("database.host")
+    var databaseHost = "localhost"
+
+    @ConfigNode("database.port")
+    var databasePort = 3306
+
+    @ConfigNode("database.user")
+    var databaseUser = "root"
+
+    @ConfigNode("database.password")
+    var databasePassword = "root"
+
+    @ConfigNode("database.database")
+    var databaseName = "minecraft"
+
+    @ConfigNode("database.table")
+    var databaseTable = ""
+
+    @ConfigNode("database.username-mode")
+    var databaseUsernameMode = false
+
+    @ConfigNode("database.sqlite-file")
+    var databaseSqliteFile = "data.db"
+
     @Awake(LifeCycle.ENABLE)
     private fun init() {
         conf.onReload {
             info(
                 "[Baikiruto] Config reloaded: debug=$debug, preheat=$scriptPreheatEnabled, " +
-                    "watcherEnabled=$watcherEnabled, reloadOnlineUpdate=$reloadOnlineUpdateEnabled"
+                    "watcherEnabled=$watcherEnabled, reloadOnlineUpdate=$reloadOnlineUpdateEnabled, " +
+                    "hookMythic=$mythicHookEnabled, hookAttributePlus=$attributePlusHookEnabled, " +
+                    "hookHeadDatabase=$headDatabaseHookEnabled, " +
+                    "databaseEnabled=$databaseEnabled"
             )
         }
     }

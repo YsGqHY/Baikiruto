@@ -16,7 +16,9 @@ import org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDurabilityFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemNativeFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemUniqueFeature
+import org.tabooproject.baikiruto.impl.hook.HeadDatabaseHook
 import org.tabooproject.baikiruto.impl.version.VersionAdapterService
+import taboolib.platform.compat.replacePlaceholder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -117,6 +119,8 @@ class DefaultItemStream(
         ItemDurabilityFeature.prepare(this)
         ItemCooldownFeature.injectDisplayData(this, player)
         applyRuntimeDisplay()
+        applyPlaceholderDisplay(player)
+        HeadDatabaseHook.patchSkullData(runtimeDataBacking)
         VersionAdapterService.applyVersionEffects(backingItem, runtimeDataBacking)
         ItemNativeFeature.apply(backingItem, runtimeDataBacking)
         ItemStreamTransport.sync(
@@ -163,7 +167,7 @@ class DefaultItemStream(
 
     private fun dispatchReleaseScripts(trigger: ItemScriptTrigger, context: Map<String, Any?>) {
         val item = runCatching { Baikiruto.api().getItem(itemId) }.getOrNull() ?: return
-        if (ItemScriptActionDispatcher.hasAction(item, trigger)) {
+        if (ItemScriptActionDispatcher.hasAction(item, trigger, context)) {
             ItemScriptActionDispatcher.dispatch(item, trigger, this, context)
         }
     }
@@ -209,6 +213,22 @@ class DefaultItemStream(
         val lore = itemMeta.lore
         if (!lore.isNullOrEmpty()) {
             itemMeta.lore = renderLoreTemplates(lore, context).toMutableList()
+        }
+        backingItem.itemMeta = itemMeta
+    }
+
+    private fun applyPlaceholderDisplay(player: Player?) {
+        if (player == null) {
+            return
+        }
+        val itemMeta = backingItem.itemMeta ?: return
+        val displayName = itemMeta.displayName
+        if (!displayName.isNullOrBlank()) {
+            itemMeta.setDisplayName(displayName.replacePlaceholder(player))
+        }
+        val lore = itemMeta.lore
+        if (!lore.isNullOrEmpty()) {
+            itemMeta.lore = lore.replacePlaceholder(player).toMutableList()
         }
         backingItem.itemMeta = itemMeta
     }

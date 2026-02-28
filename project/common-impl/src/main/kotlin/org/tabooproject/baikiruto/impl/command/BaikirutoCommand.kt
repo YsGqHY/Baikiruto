@@ -12,7 +12,6 @@ import taboolib.common.platform.command.CommandBody
 import taboolib.common.platform.command.CommandHeader
 import taboolib.common.platform.command.mainCommand
 import taboolib.common.platform.command.subCommand
-import taboolib.common.platform.command.suggest
 import taboolib.common.platform.command.suggestUncheck
 import taboolib.platform.util.isAir
 
