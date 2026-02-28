@@ -1,6 +1,7 @@
 package org.tabooproject.baikiruto.impl.item.event
 
 import org.tabooproject.baikiruto.core.item.event.ItemEventBus
+import taboolib.platform.type.BukkitProxyEvent
 import java.util.concurrent.CopyOnWriteArrayList
 
 object DefaultItemEventBus : ItemEventBus {
@@ -16,6 +17,9 @@ object DefaultItemEventBus : ItemEventBus {
                 @Suppress("UNCHECKED_CAST")
                 (subscriber as Subscriber<Any>).handler(event)
             }
+        }
+        if (event is BukkitProxyEvent) {
+            runCatching { event.call() }
         }
     }
 

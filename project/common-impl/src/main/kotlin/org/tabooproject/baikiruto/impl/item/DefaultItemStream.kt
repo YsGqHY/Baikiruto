@@ -3,6 +3,7 @@ package org.tabooproject.baikiruto.impl.item
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.tabooproject.baikiruto.core.Baikiruto
+import org.tabooproject.baikiruto.core.item.ItemDisplay
 import org.tabooproject.baikiruto.core.item.ItemScriptTrigger
 import org.tabooproject.baikiruto.core.item.ItemSignal
 import org.tabooproject.baikiruto.core.item.ItemStream
@@ -11,6 +12,7 @@ import org.tabooproject.baikiruto.core.item.Meta
 import org.tabooproject.baikiruto.core.item.event.ItemReleaseDisplayEvent
 import org.tabooproject.baikiruto.core.item.event.ItemReleaseEvent
 import org.tabooproject.baikiruto.core.item.event.ItemReleaseFinalEvent
+import org.tabooproject.baikiruto.core.item.event.ItemReleaseDisplayBuildEvent
 import org.tabooproject.baikiruto.core.item.event.ItemSelectDisplayEvent
 import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature
@@ -188,9 +190,19 @@ class DefaultItemStream(
         ItemUniqueFeature.prepare(this, player)
         val contextMutable = LinkedHashMap(context)
         ItemDataMapperFeature.apply(this, context)
-        if (!postReleaseEvent(ItemReleaseEvent(this, player, context["event"], contextMutable))) {
+        val releaseEvent = ItemReleaseEvent(
+            stream = this,
+            player = player,
+            source = context["event"],
+            context = contextMutable,
+            icon = backingItem.type,
+            data = readLegacyDamage(backingItem),
+            itemMeta = backingItem.itemMeta?.clone()
+        )
+        if (!postReleaseEvent(releaseEvent)) {
             return backingItem.clone()
         }
+        applyReleaseEventMutation(releaseEvent)
         dispatchReleaseScripts(ItemScriptTrigger.RELEASE, context)
         applySelectedDisplay(player, context["event"], contextMutable)
         applyI18nDisplay()
@@ -212,7 +224,15 @@ class DefaultItemStream(
             metaHistory = metaHistoryBacking.toList(),
             runtimeData = runtimeDataBacking
         )
-        postReleaseEvent(ItemReleaseFinalEvent(this, player, context["event"], contextMutable))
+        val finalEvent = ItemReleaseFinalEvent(
+            stream = this,
+            player = player,
+            source = context["event"],
+            context = contextMutable,
+            itemStack = backingItem.clone()
+        )
+        postReleaseEvent(finalEvent)
+        backingItem = finalEvent.itemStack.clone()
         return backingItem.clone()
     }
 
@@ -266,6 +286,45 @@ class DefaultItemStream(
         return !event.cancelled
     }
 
+    private fun applyReleaseEventMutation(event: ItemReleaseEvent) {
+        if (!isDisplayFieldLocked("icon")) {
+            backingItem.type = event.icon
+        }
+        applyLegacyDamage(backingItem, event.data)
+        event.itemMeta?.let { backingItem.itemMeta = it }
+    }
+
+    private fun readLegacyDamage(itemStack: ItemStack): Int {
+        val itemMeta = itemStack.itemMeta
+        if (itemMeta != null) {
+            val method = itemMeta.javaClass.methods.firstOrNull { method ->
+                method.name == "getDamage" && method.parameterCount == 0
+            }
+            if (method != null) {
+                val damage = runCatching { method.invoke(itemMeta) as? Number }.getOrNull()?.toInt()
+                if (damage != null) {
+                    return damage
+                }
+            }
+        }
+        return runCatching { itemStack.durability.toInt() }.getOrDefault(0)
+    }
+
+    private fun applyLegacyDamage(itemStack: ItemStack, damage: Int) {
+        val value = damage.coerceAtLeast(0)
+        val itemMeta = itemStack.itemMeta
+        if (itemMeta != null) {
+            val method = itemMeta.javaClass.methods.firstOrNull { method ->
+                method.name == "setDamage" && method.parameterCount == 1
+            }
+            if (method != null && runCatching { method.invoke(itemMeta, value) }.isSuccess) {
+                itemStack.itemMeta = itemMeta
+                return
+            }
+        }
+        runCatching { itemStack.durability = value.toShort() }
+    }
+
     private fun applyI18nDisplay() {
         val player = invocationContext["player"] as? Player ?: return
         val locale = resolveLocale(player) ?: return
@@ -307,27 +366,91 @@ class DefaultItemStream(
             ?: event.displayId?.let(manager::getDisplay)
             ?: initialDisplay
             ?: return
-        putRuntimeData("display-id", selectedDisplay.id, ignorePathLock = true)
+        val buildEvent = ItemReleaseDisplayBuildEvent(
+            stream = this,
+            player = player,
+            source = source,
+            context = context,
+            displayId = selectedDisplay.id,
+            display = selectedDisplay,
+            name = resolveDisplayNameVariables(selectedDisplay).toMutableMap(),
+            lore = resolveDisplayLoreVariables(selectedDisplay)
+                .mapValues { (_, value) -> value.toMutableList() }
+                .toMutableMap()
+        )
+        api.getItemEventBus().post(buildEvent)
+        val activeDisplay = buildEvent.display
+            ?: buildEvent.displayId?.let(manager::getDisplay)
+            ?: selectedDisplay
+        putRuntimeData("display-id", activeDisplay.id, ignorePathLock = true)
+        val displayProduct = activeDisplay.build(
+            name = buildEvent.name,
+            lore = buildEvent.lore
+        )
         if (!isDisplayFieldLocked("name")) {
-            selectedDisplay.resolveDisplayName()?.let { displayName ->
+            displayProduct.name?.let { displayName ->
                 VersionAdapterService.applyDisplayName(backingItem, displayName)
             }
-            if (selectedDisplay.name.isNotEmpty()) {
-                putRuntimeData("name", LinkedHashMap(selectedDisplay.name), ignorePathLock = true)
+            if (buildEvent.name.isNotEmpty()) {
+                putRuntimeData("name", LinkedHashMap(buildEvent.name), ignorePathLock = true)
             }
         }
         if (!isDisplayFieldLocked("lore")) {
-            val lore = selectedDisplay.resolveLore()
+            val lore = displayProduct.lore
             if (lore.isNotEmpty()) {
                 VersionAdapterService.applyLore(backingItem, lore)
             }
-            if (selectedDisplay.lore.isNotEmpty()) {
+            if (buildEvent.lore.isNotEmpty()) {
                 putRuntimeData(
                     "lore",
-                    selectedDisplay.lore.mapValues { (_, value) -> value.toList() },
+                    buildEvent.lore.mapValues { (_, value) -> value.toList() },
                     ignorePathLock = true
                 )
             }
+        }
+    }
+
+    private fun resolveDisplayNameVariables(display: ItemDisplay): Map<String, String> {
+        val runtime = parseDisplayNameVariables(runtimeDataBacking["name"])
+        if (runtime.isNotEmpty()) {
+            return runtime
+        }
+        return display.name
+    }
+
+    private fun resolveDisplayLoreVariables(display: ItemDisplay): Map<String, List<String>> {
+        val runtime = parseDisplayLoreVariables(runtimeDataBacking["lore"])
+        if (runtime.isNotEmpty()) {
+            return runtime
+        }
+        return display.lore
+    }
+
+    private fun parseDisplayNameVariables(source: Any?): Map<String, String> {
+        return when (source) {
+            is Map<*, *> -> source.entries.mapNotNull { (key, value) ->
+                val normalizedKey = key?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                normalizedKey to value?.toString().orEmpty()
+            }.toMap(linkedMapOf())
+            is String -> source.trim().takeIf { it.isNotEmpty() }?.let { mapOf("item_name" to it) } ?: emptyMap()
+            else -> emptyMap()
+        }
+    }
+
+    private fun parseDisplayLoreVariables(source: Any?): Map<String, List<String>> {
+        return when (source) {
+            is Map<*, *> -> source.entries.mapNotNull { (key, value) ->
+                val normalizedKey = key?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                val lines = toStringList(value)
+                if (lines.isEmpty()) {
+                    return@mapNotNull null
+                }
+                normalizedKey to lines
+            }.toMap(linkedMapOf())
+            is String, is Iterable<*> -> toStringList(source).takeIf { it.isNotEmpty() }
+                ?.let { mapOf("item_description" to it) }
+                ?: emptyMap()
+            else -> emptyMap()
         }
     }
 

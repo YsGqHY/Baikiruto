@@ -21,12 +21,14 @@ import org.bukkit.event.player.PlayerSwapHandItemsEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.meta.ItemMeta
+import org.bukkit.Material
 import org.tabooproject.baikiruto.core.item.ItemDisplay
 import org.tabooproject.baikiruto.core.item.ItemScriptTrigger
 import org.tabooproject.baikiruto.core.item.ItemStream
 
 open class ItemLifecycleEvent(
-    val stream: ItemStream,
+    var stream: ItemStream,
     val player: Player?,
     val source: Any?,
     val context: MutableMap<String, Any?> = linkedMapOf()
@@ -41,35 +43,73 @@ open class ItemLifecycleEvent(
 class ItemBuildPreEvent(
     stream: ItemStream,
     player: Player?,
-    context: MutableMap<String, Any?>
-) : ItemLifecycleEvent(stream, player, null, context)
+    context: MutableMap<String, Any?>,
+    val name: MutableMap<String, String> = linkedMapOf(),
+    val lore: MutableMap<String, MutableList<String>> = linkedMapOf()
+) : ItemLifecycleEvent(stream, player, null, context) {
+
+    val itemStream: ItemStream
+        get() = stream
+
+    fun addName(key: String, value: Any?) {
+        val normalizedKey = key.trim().takeIf { it.isNotEmpty() } ?: return
+        name[normalizedKey] = value?.toString().orEmpty()
+    }
+
+    fun addLore(key: String, value: Any?) {
+        val normalizedKey = key.trim().takeIf { it.isNotEmpty() } ?: return
+        val values = lore.computeIfAbsent(normalizedKey) { arrayListOf() }
+        when (value) {
+            null -> values += "null"
+            is Iterable<*> -> value.forEach { values += it?.toString().orEmpty() }
+            else -> values += value.toString()
+        }
+    }
+
+    fun addLore(key: String, values: List<Any?>) {
+        values.forEach { addLore(key, it) }
+    }
+}
 
 class ItemBuildPostEvent(
     stream: ItemStream,
     player: Player?,
-    context: MutableMap<String, Any?>
-) : ItemLifecycleEvent(stream, player, null, context)
+    context: MutableMap<String, Any?>,
+    val name: Map<String, String> = emptyMap(),
+    val lore: Map<String, MutableList<String>> = emptyMap()
+) : ItemLifecycleEvent(stream, player, null, context) {
+
+    val itemStream: ItemStream
+        get() = stream
+}
 
 class ItemReleaseEvent(
     stream: ItemStream,
     player: Player?,
     source: Any?,
-    context: MutableMap<String, Any?>
-) : ItemLifecycleEvent(stream, player, source, context)
+    context: MutableMap<String, Any?>,
+    var icon: Material,
+    var data: Int,
+    var itemMeta: ItemMeta?
+) : ItemLifecycleEvent(stream, player, source, context) {
+}
 
 class ItemReleaseDisplayEvent(
     stream: ItemStream,
     player: Player?,
     source: Any?,
     context: MutableMap<String, Any?>
-) : ItemLifecycleEvent(stream, player, source, context)
+) : ItemLifecycleEvent(stream, player, source, context) {
+}
 
 class ItemReleaseFinalEvent(
     stream: ItemStream,
     player: Player?,
     source: Any?,
-    context: MutableMap<String, Any?>
-) : ItemLifecycleEvent(stream, player, source, context)
+    context: MutableMap<String, Any?>,
+    var itemStack: ItemStack
+) : ItemLifecycleEvent(stream, player, source, context) {
+}
 
 class ItemGiveEvent(
     stream: ItemStream,
@@ -84,6 +124,22 @@ class ItemUpdateEvent(
     val newVersionHash: String
 ) : ItemLifecycleEvent(stream, player, null)
 
+class ItemCheckUpdateEvent(
+    stream: ItemStream,
+    player: Player?,
+    val oldVersionHash: String,
+    val latestVersionHash: String,
+    var isOutdated: Boolean
+) : ItemLifecycleEvent(stream, player, null) {
+
+    init {
+        cancelled = !isOutdated
+    }
+
+    val itemStream: ItemStream
+        get() = stream
+}
+
 class ItemSelectDisplayEvent(
     stream: ItemStream,
     player: Player?,
@@ -92,6 +148,37 @@ class ItemSelectDisplayEvent(
     var displayId: String?,
     var display: ItemDisplay?
 ) : ItemLifecycleEvent(stream, player, source, context)
+
+class ItemReleaseDisplayBuildEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>,
+    var displayId: String?,
+    var display: ItemDisplay?,
+    val name: MutableMap<String, String>,
+    val lore: MutableMap<String, MutableList<String>>
+) : ItemLifecycleEvent(stream, player, source, context) {
+
+    fun addName(key: String, value: Any?) {
+        val normalizedKey = key.trim().takeIf { it.isNotEmpty() } ?: return
+        name[normalizedKey] = value?.toString().orEmpty()
+    }
+
+    fun addLore(key: String, value: Any?) {
+        val normalizedKey = key.trim().takeIf { it.isNotEmpty() } ?: return
+        val values = lore.computeIfAbsent(normalizedKey) { arrayListOf() }
+        when (value) {
+            null -> values += "null"
+            is Iterable<*> -> value.forEach { values += it?.toString().orEmpty() }
+            else -> values += value.toString()
+        }
+    }
+
+    fun addLore(key: String, values: List<Any?>) {
+        values.forEach { addLore(key, it) }
+    }
+}
 
 open class ItemActionTriggerEvent(
     stream: ItemStream,

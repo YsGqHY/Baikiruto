@@ -146,6 +146,27 @@ class ItemDefinitionLoaderCompatibilityTest {
         )
     }
 
+    @Test
+    fun `should load metas from legacy meta section`() {
+        val section = sectionOf(
+            mapOf(
+                "meta" to mapOf(
+                    "test-meta" to mapOf(
+                        "scripts" to mapOf(
+                            "build" to "return 1"
+                        )
+                    )
+                )
+            )
+        )
+
+        val metas = ItemDefinitionLoader.loadMetaFromSection(section, DefaultItemManager())
+
+        assertEquals(1, metas.size)
+        assertEquals("test-meta", metas.first().id)
+        assertTrue(metas.first().scripts.has(org.tabooproject.baikiruto.core.item.ItemScriptTrigger.BUILD))
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun invokeMapMethod(name: String, source: Map<String, Any?>): Map<String, Any?> {
         val method = ItemDefinitionLoader::class.java.getDeclaredMethod(name, Map::class.java)

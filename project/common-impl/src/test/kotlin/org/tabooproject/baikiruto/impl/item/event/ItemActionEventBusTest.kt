@@ -12,10 +12,14 @@ import org.tabooproject.baikiruto.core.item.ItemSignal
 import org.tabooproject.baikiruto.core.item.ItemStream
 import org.tabooproject.baikiruto.core.item.ItemStreamData
 import org.tabooproject.baikiruto.core.item.Meta
+import org.tabooproject.baikiruto.core.item.event.ItemBuildPostEvent
+import org.tabooproject.baikiruto.core.item.event.ItemBuildPreEvent
 import org.tabooproject.baikiruto.core.item.event.ItemActionTriggerEvent
 import org.tabooproject.baikiruto.core.item.event.ItemLifecycleEvent
+import org.tabooproject.baikiruto.core.item.event.ItemReleaseDisplayBuildEvent
 import org.tabooproject.baikiruto.core.item.event.ItemSelectActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemSelectDisplayEvent
+import org.tabooproject.baikiruto.core.item.ItemDisplay
 
 class ItemActionEventBusTest {
 
@@ -136,6 +140,63 @@ class ItemActionEventBusTest {
         } finally {
             subscription.close()
         }
+    }
+
+    @Test
+    fun `should support release display build event mutation`() {
+        val subscription = DefaultItemEventBus.subscribe(ItemReleaseDisplayBuildEvent::class.java) { event ->
+            event.addName("name", "Mutated")
+            event.addLore("desc", "A")
+            event.addLore("desc", listOf("B"))
+        }
+        try {
+            val event = ItemReleaseDisplayBuildEvent(
+                stream = stubStream(),
+                player = null,
+                source = null,
+                context = linkedMapOf(),
+                displayId = "display:id",
+                display = ItemDisplay(id = "display:id"),
+                name = linkedMapOf(),
+                lore = linkedMapOf()
+            )
+            DefaultItemEventBus.post(event)
+            assertEquals("Mutated", event.name["name"])
+            assertEquals(listOf("A", "B"), event.lore["desc"])
+        } finally {
+            subscription.close()
+        }
+    }
+
+    @Test
+    fun `should support build pre event name lore mutation`() {
+        val event = ItemBuildPreEvent(
+            stream = stubStream(),
+            player = null,
+            context = linkedMapOf()
+        )
+        event.addName("item_name", "&6Demo")
+        event.addLore("item_description", "Line-1")
+        event.addLore("item_description", listOf("Line-2"))
+
+        assertSame(event.stream, event.itemStream)
+        assertEquals("&6Demo", event.name["item_name"])
+        assertEquals(listOf("Line-1", "Line-2"), event.lore["item_description"])
+    }
+
+    @Test
+    fun `should support build post event aliases`() {
+        val event = ItemBuildPostEvent(
+            stream = stubStream(),
+            player = null,
+            context = linkedMapOf(),
+            name = mapOf("item_name" to "&6Demo"),
+            lore = mapOf("item_description" to mutableListOf("Line-1"))
+        )
+
+        assertSame(event.stream, event.itemStream)
+        assertEquals("&6Demo", event.name["item_name"])
+        assertEquals(listOf("Line-1"), event.lore["item_description"])
     }
 
     private fun stubStream(): ItemStream {

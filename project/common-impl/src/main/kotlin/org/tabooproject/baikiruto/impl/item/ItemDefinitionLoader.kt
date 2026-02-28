@@ -73,8 +73,8 @@ object ItemDefinitionLoader {
 
         parsedItemFiles.mapNotNull { parseGroup(it, itemsDir) }.forEach { groupRegistry.register(it.id, it) }
         parsedItemFiles.flatMap { parseModels(it.conf) }.forEach { modelRegistry.register(it.id, it) }
-        parsedDisplayFiles.flatMap { parseDisplays(it.conf) }.forEach { displayRegistry.register(it.id, it) }
-        parsedItemFiles.flatMap { parseDisplays(it.conf) }.forEach { displayRegistry.register(it.id, it) }
+        parsedDisplayFiles.flatMap { parseDisplays(it.conf, fromItemFile = false) }.forEach { displayRegistry.register(it.id, it) }
+        parsedItemFiles.flatMap { parseDisplays(it.conf, fromItemFile = true) }.forEach { displayRegistry.register(it.id, it) }
         PluginReloadEvent.Display(
             source = source,
             loadedDisplays = displayRegistry.keys().size
@@ -108,6 +108,102 @@ object ItemDefinitionLoader {
 
     fun loadedIds(): Set<String> {
         return loadedItemIds.toSet()
+    }
+
+    fun loadItemFromFile(
+        file: File,
+        manager: ItemManager = Baikiruto.api().getItemManager()
+    ): List<Item> {
+        val sources = collectYamlSources(file)
+        if (sources.isEmpty()) {
+            return emptyList()
+        }
+        val root = if (file.isDirectory) file else (file.parentFile ?: file.absoluteFile.parentFile ?: file)
+        return sources.mapNotNull { source ->
+            loadConfiguration(source)?.let { ParsedFile(source, it) }
+        }.flatMap { parsed ->
+            parseItems(parsed, manager, root)
+        }
+    }
+
+    fun loadModelFromFile(file: File): List<ItemModel> {
+        return collectYamlSources(file).mapNotNull { source ->
+            loadConfiguration(source)
+        }.flatMap { conf ->
+            parseModels(conf)
+        }
+    }
+
+    fun loadDisplayFromFile(file: File, fromItemFile: Boolean = false): List<ItemDisplay> {
+        return collectYamlSources(file).mapNotNull { source ->
+            loadConfiguration(source)
+        }.flatMap { conf ->
+            parseDisplays(conf, fromItemFile)
+        }
+    }
+
+    fun loadMetaFromSection(
+        root: ConfigurationSection,
+        manager: ItemManager = Baikiruto.api().getItemManager()
+    ): List<Meta> {
+        parseMetas(root, manager).takeIf { it.isNotEmpty() }?.let { return it }
+        val legacyMetaSection = root.getConfigurationSection("meta") ?: return emptyList()
+        return parseMetaEntries(legacyMetaSection, manager)
+    }
+
+    private fun parseMetaEntries(section: ConfigurationSection, manager: ItemManager): List<Meta> {
+        return section.getKeys(false).map { key ->
+            val metaSection = section.getConfigurationSection(key)
+            val source = metaSection?.let(::sectionToMap) ?: anyToMap(section.get(key))
+            val scripts = if (metaSection != null) {
+                parseHooks(
+                    metaSection.getConfigurationSection("scripts"),
+                    metaSection.getConfigurationSection("event"),
+                    i18nSection = metaSection.getConfigurationSection("i18n")
+                )
+            } else {
+                parseHooksFromMaps(
+                    anyToMap(source["scripts"]),
+                    anyToMap(source["event"]),
+                    i18nSources = listOf(anyToMap(source["i18n"]))
+                )
+            }
+
+            val factoryType = resolveMetaFactoryType(source)
+            if (!factoryType.isNullOrBlank()) {
+                val factory = resolveMetaFactory(manager, factoryType)
+                if (factory == null) {
+                    warning("[Baikiruto] Missing meta factory '$factoryType' for meta '$key', fallback to default meta.")
+                } else {
+                    val created = runCatching {
+                        factory.create(key, source, scripts)
+                    }.onFailure {
+                        warning(
+                            "[Baikiruto] Failed to create meta '$key' by factory '${factory.id}': ${it.message}. " +
+                                "Fallback to default meta."
+                        )
+                    }.getOrNull()
+                    if (created != null) {
+                        return@map created
+                    }
+                }
+            }
+
+            DefaultMeta(id = key, scripts = scripts)
+        }
+    }
+
+    private fun collectYamlSources(file: File): List<File> {
+        if (!file.exists()) {
+            return emptyList()
+        }
+        if (file.isFile) {
+            if (file.extension.equals("yml", true) || file.extension.equals("yaml", true)) {
+                return listOf(file)
+            }
+            return emptyList()
+        }
+        return collectYamlFiles(file)
     }
 
     private fun collectYamlFiles(root: File): List<File> {
@@ -148,7 +244,7 @@ object ItemDefinitionLoader {
         return models
     }
 
-    private fun parseDisplays(conf: ConfigurationSection): List<ItemDisplay> {
+    private fun parseDisplays(conf: ConfigurationSection, fromItemFile: Boolean): List<ItemDisplay> {
         val displays = mutableListOf<ItemDisplay>()
         conf.getConfigurationSection("displays")?.let { displaysSection ->
             displaysSection.getKeys(false).forEach { key ->
@@ -165,11 +261,12 @@ object ItemDefinitionLoader {
                 key == "items" ||
                     key == "__group__" ||
                     key == "models" ||
-                    key == "displays"
+                    key == "displays" ||
+                    key == "display"
             }
             .forEach { key ->
                 conf.getConfigurationSection(key)?.let { section ->
-                    if (section.contains("display")) {
+                    if (fromItemFile && section.contains("display")) {
                         return@let
                     }
                     parseDisplayDefinition(key, section)?.let(displays::add)
@@ -469,45 +566,7 @@ object ItemDefinitionLoader {
         val metasSection = section.getConfigurationSection("metas")
             ?: section.getConfigurationSection("meta-scripts")
             ?: return emptyList()
-        return metasSection.getKeys(false).map { key ->
-            val metaSection = metasSection.getConfigurationSection(key)
-            val source = metaSection?.let(::sectionToMap) ?: anyToMap(metasSection.get(key))
-            val scripts = if (metaSection != null) {
-                parseHooks(
-                    metaSection.getConfigurationSection("scripts"),
-                    metaSection.getConfigurationSection("event"),
-                    i18nSection = metaSection.getConfigurationSection("i18n")
-                )
-            } else {
-                parseHooksFromMaps(
-                    anyToMap(source["scripts"]),
-                    anyToMap(source["event"]),
-                    i18nSources = listOf(anyToMap(source["i18n"]))
-                )
-            }
-
-            val factoryType = resolveMetaFactoryType(source)
-            if (!factoryType.isNullOrBlank()) {
-                val factory = resolveMetaFactory(manager, factoryType)
-                if (factory == null) {
-                    warning("[Baikiruto] Missing meta factory '$factoryType' for meta '$key', fallback to default meta.")
-                } else {
-                    val created = runCatching {
-                        factory.create(key, source, scripts)
-                    }.onFailure {
-                        warning(
-                            "[Baikiruto] Failed to create meta '$key' by factory '${factory.id}': ${it.message}. " +
-                                "Fallback to default meta."
-                        )
-                    }.getOrNull()
-                    if (created != null) {
-                        return@map created
-                    }
-                }
-            }
-
-            DefaultMeta(id = key, scripts = scripts)
-        }
+        return parseMetaEntries(metasSection, manager)
     }
 
     private fun resolveMetaFactoryType(source: Map<String, Any?>): String? {

@@ -2,6 +2,9 @@ dependencies {
     taboo("ink.ptms:um:1.1.5") { isTransitive = false }
     compileOnly(project(":project:common"))
     testImplementation(project(":project:common"))
+    compileOnly("com.google.code.gson:gson:2.11.0")
+    testImplementation("com.google.code.gson:gson:2.11.0")
+    testImplementation("com.google.guava:guava:33.3.1-jre")
     compileOnly("ink.ptms.core:v12110:12110:mapped")
     compileOnly("ink.ptms.core:v12110:12110:universal")
     testImplementation("ink.ptms.core:v12110:12110:mapped")

@@ -7,6 +7,7 @@ import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemSignal
 import org.tabooproject.baikiruto.core.item.ItemUpdater
+import org.tabooproject.baikiruto.core.item.event.ItemCheckUpdateEvent
 import org.tabooproject.baikiruto.core.item.event.ItemUpdateEvent
 import taboolib.platform.util.isAir
 
@@ -40,7 +41,15 @@ object DefaultItemUpdater : ItemUpdater {
         val stream = Baikiruto.api().readItem(itemStack) ?: return false to itemStack
         val item = Baikiruto.api().getItem(stream.itemId) ?: return false to itemStack
         val latestHash = currentVersionHash(item)
-        if (latestHash == stream.versionHash) {
+        val checkEvent = ItemCheckUpdateEvent(
+            stream = stream,
+            player = player,
+            oldVersionHash = stream.versionHash,
+            latestVersionHash = latestHash,
+            isOutdated = latestHash != stream.versionHash
+        )
+        Baikiruto.api().getItemEventBus().post(checkEvent)
+        if (checkEvent.cancelled) {
             return false to itemStack
         }
         val rebuiltStream = item.build(

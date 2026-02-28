@@ -3,12 +3,15 @@ package org.tabooproject.baikiruto.core.version
 import org.bukkit.Color
 import org.bukkit.Bukkit
 import org.bukkit.Material
+import org.bukkit.attribute.AttributeModifier
 import org.bukkit.enchantments.Enchantment
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 import org.bukkit.inventory.ItemFlag
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.ItemMeta
+import org.tabooproject.baikiruto.core.item.Attributes
 import java.lang.reflect.Modifier
 import java.util.Base64
 import java.util.Locale
@@ -180,9 +183,6 @@ abstract class BaseItemMetaVersionAdapter {
     protected open fun applyAttributes(itemMeta: ItemMeta, rawAttributes: Any?) {
         val entries = rawAttributes as? Iterable<*> ?: return
         val attributeClass = runCatching { Class.forName("org.bukkit.attribute.Attribute") }.getOrNull() ?: return
-        val modifierClass = runCatching { Class.forName("org.bukkit.attribute.AttributeModifier") }.getOrNull() ?: return
-        val operationClass = runCatching { Class.forName("org.bukkit.attribute.AttributeModifier\$Operation") }.getOrNull() ?: return
-        val slotClass = runCatching { Class.forName("org.bukkit.inventory.EquipmentSlot") }.getOrNull()
         val addMethod = itemMeta.javaClass.methods.firstOrNull { method ->
             method.name == "addAttributeModifier" && method.parameterCount == 2
         } ?: return
@@ -195,13 +195,17 @@ abstract class BaseItemMetaVersionAdapter {
             val slotName = entry["slot"]?.toString()?.trim()?.uppercase(Locale.ENGLISH)
 
             val attribute = resolveEnumConstant(attributeClass, attributeName) ?: return@forEach
-            val operation = resolveEnumConstant(operationClass, operationName) ?: return@forEach
-            val slot = if (slotClass != null && slotName != null) {
-                resolveEnumConstant(slotClass, slotName)
-            } else {
-                null
+            val operation = runCatching { AttributeModifier.Operation.valueOf(operationName) }.getOrNull()
+                ?: return@forEach
+            val slot = slotName?.let { rawSlot ->
+                runCatching { EquipmentSlot.valueOf(rawSlot) }.getOrNull()
             }
-            val modifier = createAttributeModifier(modifierClass, operation, amount, slot) ?: return@forEach
+            val modifier = Attributes.createAttributeModifier(
+                name = "baikiruto.attr",
+                amount = amount,
+                operation = operation,
+                equipmentSlot = slot
+            ) ?: return@forEach
             runCatching { addMethod.invoke(itemMeta, attribute, modifier) }
         }
     }
@@ -510,48 +514,6 @@ abstract class BaseItemMetaVersionAdapter {
             }.getOrNull()
         }
         return runCatching { PotionEffect(effectType, duration, amplifier, ambient, particles) }.getOrNull()
-    }
-
-    private fun createAttributeModifier(
-        modifierClass: Class<*>,
-        operation: Any,
-        amount: Double,
-        slot: Any?
-    ): Any? {
-        val constructors = modifierClass.constructors.toList()
-        if (slot != null) {
-            constructors.firstOrNull { it.parameterCount == 5 }?.let { ctor ->
-                return runCatching {
-                    ctor.newInstance(
-                        UUID.randomUUID(),
-                        "baikiruto.attr",
-                        amount,
-                        operation,
-                        slot
-                    )
-                }.getOrNull()
-            }
-            constructors.firstOrNull { it.parameterCount == 4 }?.let { ctor ->
-                return runCatching {
-                    ctor.newInstance(
-                        "baikiruto.attr",
-                        amount,
-                        operation,
-                        slot
-                    )
-                }.getOrNull()
-            }
-        }
-        constructors.firstOrNull { it.parameterCount == 3 }?.let { ctor ->
-            return runCatching {
-                ctor.newInstance(
-                    "baikiruto.attr",
-                    amount,
-                    operation
-                )
-            }.getOrNull()
-        }
-        return null
     }
 
     private fun resolveEnumConstant(enumClass: Class<*>, name: String): Any? {

@@ -46,11 +46,18 @@ class DefaultItem(
             versionHash = versionHashSupplier(),
             initialRuntimeData = defaultRuntimeData
         )
-        val preEvent = ItemBuildPreEvent(stream, player, executionContext)
+        val preEvent = ItemBuildPreEvent(
+            stream = stream,
+            player = player,
+            context = executionContext,
+            name = resolveBuildNameVariables(executionContext["name"]),
+            lore = resolveBuildLoreVariables(executionContext["lore"])
+        )
         Baikiruto.api().getItemEventBus().post(preEvent)
         if (preEvent.cancelled) {
             return stream
         }
+        syncBuildDisplayVariables(stream, preEvent.name, preEvent.lore)
         ItemScriptExecutor.execute(
             id,
             ItemScriptTrigger.BUILD,
@@ -72,7 +79,17 @@ class DefaultItem(
                 BaikirutoLog.scriptRuntimeFailed("$id:meta:${meta.id}:build", ex)
             }
         }
-        Baikiruto.api().getItemEventBus().post(ItemBuildPostEvent(stream, player, executionContext))
+        val postName = resolveBuildNameVariables(stream.getRuntimeData("name"))
+        val postLore = resolveBuildLoreVariables(stream.getRuntimeData("lore"))
+        Baikiruto.api().getItemEventBus().post(
+            ItemBuildPostEvent(
+                stream = stream,
+                player = player,
+                context = executionContext,
+                name = postName.toMap(),
+                lore = postLore.mapValues { (_, value) -> value.toMutableList() }
+            )
+        )
         val costNanos = System.nanoTime() - startAt
         BaikirutoMetrics.recordItemBuild(costNanos)
         if (BaikirutoSettings.performanceLogEnabled) {
@@ -127,5 +144,64 @@ class DefaultItem(
             ?.takeIf { it.isNotEmpty() }
             ?.replace('-', '_')
             ?.lowercase()
+    }
+
+    private fun syncBuildDisplayVariables(
+        stream: ItemStream,
+        name: Map<String, String>,
+        lore: Map<String, List<String>>
+    ) {
+        if (name.isNotEmpty()) {
+            stream.setRuntimeData("name", LinkedHashMap(name))
+        }
+        if (lore.isNotEmpty()) {
+            stream.setRuntimeData("lore", lore.mapValues { (_, value) -> value.toList() })
+        }
+    }
+
+    private fun resolveBuildNameVariables(source: Any?): MutableMap<String, String> {
+        return when (source) {
+            is Map<*, *> -> source.entries.mapNotNull { (key, value) ->
+                val normalized = key?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                normalized to value?.toString().orEmpty()
+            }.toMap(linkedMapOf())
+                .toMutableMap()
+            is String -> source.trim().takeIf { it.isNotEmpty() }
+                ?.let { linkedMapOf("item_name" to it) }
+                ?: linkedMapOf()
+            else -> linkedMapOf()
+        }
+    }
+
+    private fun resolveBuildLoreVariables(source: Any?): MutableMap<String, MutableList<String>> {
+        return when (source) {
+            is Map<*, *> -> source.entries.mapNotNull { (key, value) ->
+                val normalized = key?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                val lines = toStringList(value)
+                if (lines.isEmpty()) {
+                    return@mapNotNull null
+                }
+                normalized to lines.toMutableList()
+            }.toMap(linkedMapOf())
+                .toMutableMap()
+            is String, is Iterable<*> -> {
+                val lines = toStringList(source)
+                if (lines.isEmpty()) {
+                    linkedMapOf()
+                } else {
+                    linkedMapOf("item_description" to lines.toMutableList())
+                }
+            }
+            else -> linkedMapOf()
+        }
+    }
+
+    private fun toStringList(source: Any?): List<String> {
+        return when (source) {
+            null -> emptyList()
+            is String -> source.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+            is Iterable<*> -> source.flatMap { toStringList(it) }
+            else -> listOf(source.toString())
+        }
     }
 }
