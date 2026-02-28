@@ -52,7 +52,9 @@ items:
       charge: 3
     data-mapper:
       durability_line: |
-        return (data["durability_current"] ?: data["durability"] ?: 0).toString() + "/" + (data["durability"] ?: 0).toString()
+        def current = &data["durability_current"] ?: &data["durability"] ?: 0
+        def max = &data["durability"] ?: 0
+        return current.toString() + "/" + max.toString()
     effects:
       glow: true
       item-flags:
@@ -73,77 +75,77 @@ items:
             - "&7zh_cn localization active"
     scripts:
       build: |
-        if (ctx["debug"] == true) {
-            sender?.sendMessage("[Baikiruto] build -> " + itemId)
+        if (&ctx["debug"] == true) {
+            &sender?.sendMessage("[Baikiruto] build -> " + itemId)
         }
         return item
       release: |
-        ops.setData("last_release", "release")
+        &ops.setData("last_release", "release")
         return item
       release_display: |
-        ops.setData("last_release_display", "release_display")
+        &ops.setData("last_release_display", "release_display")
         return item
       drop: |
-        ops.setData("last_trigger", "drop")
+        &ops.setData("last_trigger", "drop")
         return item
     event:
       on_use: |
-        ops.setData("last_trigger", "use")
+        &ops.setData("last_trigger", "use")
         return item
       on_interact: |
-        ops.setData("last_trigger", "interact")
+        &ops.setData("last_trigger", "interact")
         return item
       on_left_click: |
-        ops.setData("last_trigger", "left_click")
+        &ops.setData("last_trigger", "left_click")
         return item
       on_right_click: |
-        ops.setCooldown(80)
-        ops.signal("script_dispatched")
-        ops.setData("last_trigger", "right_click")
+        &ops.setCooldown(80)
+        &ops.signal("script_dispatched")
+        &ops.setData("last_trigger", "right_click")
         return item
       on_right_click_entity: |
-        ops.setData("last_trigger", "right_click_entity")
+        &ops.setData("last_trigger", "right_click_entity")
         return item
       on_attack: |
-        ops.setData("last_trigger", "attack")
+        &ops.setData("last_trigger", "attack")
         return item
       on_damage: |
-        ops.damage(1)
-        ops.setData("last_trigger", "damage")
+        &ops.damage(1)
+        &ops.setData("last_trigger", "damage")
         return item
       on_block_break: |
-        ops.setData("last_trigger", "block_break")
+        &ops.setData("last_trigger", "block_break")
         return item
       on_item_break: |
-        ops.setData("last_trigger", "item_break")
+        &ops.setData("last_trigger", "item_break")
         return item
       on_consume: |
-        ops.setData("last_trigger", "consume")
+        &ops.setData("last_trigger", "consume")
         return item
       on_pickup: |
-        ops.setData("last_trigger", "pickup")
+        &ops.setData("last_trigger", "pickup")
         return item
       on_swap_to_mainhand: |
-        ops.setData("last_trigger", "swap_to_mainhand")
+        &ops.setData("last_trigger", "swap_to_mainhand")
         return item
       on_swap_to_offhand: |
-        ops.setData("last_trigger", "swap_to_offhand")
+        &ops.setData("last_trigger", "swap_to_offhand")
         return item
-      on_inventory_click: |
-        ops.setData("last_trigger", "inventory_click")
-        return item
+#      on_inventory_click: |
+#        &ops.setData("last_trigger", "inventory_click")
+#        return item
       on_select: |
-        ops.setData("last_trigger", "select")
+        &ops.setData("last_trigger", "select")
         return item
       on_async_tick: |
-        ops.setData("last_trigger", "async_tick")
+        &ops.setData("last_trigger", "async_tick")
         return item
     metas:
       trace:
         scripts:
           build: |
-            if (ctx["debug"] == true) {
-                sender?.sendMessage("[Baikiruto] meta build -> " + itemId)
+            if (&ctx["debug"] == true) {
+                &sender?.sendMessage("[Baikiruto] meta build -> " + itemId)
             }
             return item
           drop: |
@@ -285,10 +287,10 @@ items:
           item_id: "example:guardian_totem"
     event:
       on_use: |
-        ops.setData("last_trigger", "totem_use")
+        &ops.setData("last_trigger", "totem_use")
         return item
       on_damage: |
-        ops.setData("last_trigger", "totem_damage")
+        &ops.setData("last_trigger", "totem_damage")
         return item
 
   "example:potion_suite":
@@ -327,7 +329,7 @@ items:
           item_id: "example:potion_suite"
     event:
       on_consume: |
-        ops.setData("last_trigger", "potion_consume")
+        &ops.setData("last_trigger", "potion_consume")
         return item
 
   "example:skull_suite":

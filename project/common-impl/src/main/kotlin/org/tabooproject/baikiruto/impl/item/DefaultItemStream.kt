@@ -365,7 +365,10 @@ class DefaultItemStream(
         val selectedDisplay = event.display
             ?: event.displayId?.let(manager::getDisplay)
             ?: initialDisplay
-            ?: return
+        if (selectedDisplay == null) {
+            applyInlineDisplay()
+            return
+        }
         val buildEvent = ItemReleaseDisplayBuildEvent(
             stream = this,
             player = player,
@@ -406,6 +409,27 @@ class DefaultItemStream(
                     buildEvent.lore.mapValues { (_, value) -> value.toList() },
                     ignorePathLock = true
                 )
+            }
+        }
+    }
+
+    private fun applyInlineDisplay() {
+        val nameVariables = parseDisplayNameVariables(runtimeDataBacking["name"])
+        if (nameVariables.isNotEmpty() && !isDisplayFieldLocked("name")) {
+            val displayName = nameVariables["item_name"]
+                ?: nameVariables.entries.firstOrNull()?.value
+            if (!displayName.isNullOrBlank()) {
+                VersionAdapterService.applyDisplayName(backingItem, displayName)
+            }
+        }
+
+        val loreVariables = parseDisplayLoreVariables(runtimeDataBacking["lore"])
+        if (loreVariables.isNotEmpty() && !isDisplayFieldLocked("lore")) {
+            val loreLines = loreVariables.entries
+                .sortedBy { it.key }
+                .flatMap { it.value }
+            if (loreLines.isNotEmpty()) {
+                VersionAdapterService.applyLore(backingItem, loreLines)
             }
         }
     }
