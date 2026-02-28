@@ -16,7 +16,7 @@ class ItemScriptHooksTest {
     }
 
     @Test
-    fun `should parse zaphkiel style trigger aliases`() {
+    fun `should parse legacy style trigger aliases`() {
         val hooks = ItemScriptHooks.from(
             mapOf(
                 "on_left_click" to "left()",

@@ -26,7 +26,6 @@ object MythicHook {
         val mob = source.mob ?: return
         val config = mob.config
         val equipmentSection = config.getConfigurationSection("Baikiruto.equipments")
-            ?: config.getConfigurationSection("Zaphkiel.equipments")
             ?: return
         val entity = mob.entity as? LivingEntity ?: return
         submit(delay = 5L) {
@@ -42,9 +41,7 @@ object MythicHook {
         val source = event.get<MobDeathEvent>()
         val mob = source.mob
         val config = mob.config
-        val dropLines = config.getStringList("Baikiruto.drops").ifEmpty {
-            config.getStringList("Zaphkiel.drops")
-        }
+        val dropLines = config.getStringList("Baikiruto.drops")
         if (dropLines.isEmpty()) {
             return
         }

@@ -11,7 +11,7 @@ import org.tabooproject.baikiruto.core.item.SerializedItem
 class BaikirutoLegacyAPIJsonCompatTest {
 
     @Test
-    fun `should encode and decode zaphkiel style json container`() {
+    fun `should encode and decode legacy style json container`() {
         val source = object : SerializedItem {
             override val itemId: String = "test:item"
             override val amount: Int = 3
