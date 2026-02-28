@@ -208,11 +208,17 @@ class DefaultItemStream(
         val context = runtimeTemplateContext()
         val displayName = itemMeta.displayName
         if (!displayName.isNullOrBlank()) {
-            itemMeta.setDisplayName(renderNameTemplate(displayName, context))
+            itemMeta.setDisplayName(
+                LegacyTextColorizer.colorize(
+                    renderNameTemplate(displayName, context)
+                )
+            )
         }
         val lore = itemMeta.lore
         if (!lore.isNullOrEmpty()) {
-            itemMeta.lore = renderLoreTemplates(lore, context).toMutableList()
+            itemMeta.lore = LegacyTextColorizer.colorize(
+                renderLoreTemplates(lore, context)
+            ).toMutableList()
         }
         backingItem.itemMeta = itemMeta
     }
@@ -224,11 +230,17 @@ class DefaultItemStream(
         val itemMeta = backingItem.itemMeta ?: return
         val displayName = itemMeta.displayName
         if (!displayName.isNullOrBlank()) {
-            itemMeta.setDisplayName(displayName.replacePlaceholder(player))
+            itemMeta.setDisplayName(
+                LegacyTextColorizer.colorize(
+                    displayName.replacePlaceholder(player)
+                )
+            )
         }
         val lore = itemMeta.lore
         if (!lore.isNullOrEmpty()) {
-            itemMeta.lore = lore.replacePlaceholder(player).toMutableList()
+            itemMeta.lore = LegacyTextColorizer.colorize(
+                lore.replacePlaceholder(player)
+            ).toMutableList()
         }
         backingItem.itemMeta = itemMeta
     }

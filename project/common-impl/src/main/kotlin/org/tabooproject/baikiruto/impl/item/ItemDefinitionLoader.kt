@@ -29,6 +29,7 @@ object ItemDefinitionLoader {
 
     private const val DEFAULT_ITEM_FILE = "items/example.yml"
     private const val DEFAULT_DISPLAY_FILE = "display/def.yml"
+    private const val LEGACY_COLOR_CODES = "0123456789AaBbCcDdEeFfKkLlMmNnOoRrXx"
     private val loadedItemIds = CopyOnWriteArraySet<String>()
     private data class ParsedFile(val file: File, val conf: Configuration)
 
@@ -222,7 +223,7 @@ object ItemDefinitionLoader {
         }
         val direct = section.getStringList("lore!!").ifEmpty { section.getStringList("lore") }
         if (direct.isNotEmpty()) {
-            return mapOf("item_description" to direct)
+            return mapOf("item_description" to direct.flatMap { it.split('\n') })
         }
         val directString = section.getString("lore!!") ?: section.getString("lore")
         if (!directString.isNullOrBlank()) {
@@ -1627,7 +1628,7 @@ object ItemDefinitionLoader {
         val directLore = section.getStringList("lore!!")
             .ifEmpty { section.getStringList("lore") }
         if (directLore.isNotEmpty()) {
-            return directLore
+            return directLore.flatMap { it.split('\n') }
         }
         val loreString = section.getString("lore!!") ?: section.getString("lore")
         if (!loreString.isNullOrBlank()) {
@@ -1666,16 +1667,29 @@ object ItemDefinitionLoader {
         var remaining = line
         while (remaining.length > size) {
             val chunk = remaining.substring(0, size)
-            val colorIndex = chunk.lastIndexOf('§')
+            val carryColor = trailingLegacyColor(chunk)
             result += chunk
-            remaining = if (colorIndex != -1 && colorIndex + 2 <= chunk.length) {
-                chunk.substring(colorIndex, colorIndex + 2) + remaining.substring(size)
+            remaining = if (carryColor != null) {
+                carryColor + remaining.substring(size)
             } else {
                 remaining.substring(size)
             }
         }
         result += remaining
         return result
+    }
+
+    private fun trailingLegacyColor(chunk: String): String? {
+        for (index in chunk.length - 2 downTo 0) {
+            val marker = chunk[index]
+            if (marker != '&' && marker != '§') {
+                continue
+            }
+            if (chunk[index + 1] in LEGACY_COLOR_CODES) {
+                return "${marker}${chunk[index + 1]}"
+            }
+        }
+        return null
     }
 
     private fun sectionToMap(section: ConfigurationSection): Map<String, Any?> {
