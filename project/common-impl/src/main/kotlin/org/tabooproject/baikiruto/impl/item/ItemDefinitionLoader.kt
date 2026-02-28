@@ -405,7 +405,7 @@ object ItemDefinitionLoader {
             groupId = groupId,
             displayId = displayId,
             modelIds = modelIds,
-            metas = parseMetas(section),
+            metas = parseMetas(section, manager),
             scripts = parseMergedHooks(section, models),
             defaultRuntimeData = mergeRuntimeData(
                 modelDefaults,
@@ -421,20 +421,66 @@ object ItemDefinitionLoader {
         )
     }
 
-    private fun parseMetas(section: ConfigurationSection): List<Meta> {
+    private fun parseMetas(section: ConfigurationSection, manager: ItemManager): List<Meta> {
         val metasSection = section.getConfigurationSection("metas")
             ?: section.getConfigurationSection("meta-scripts")
             ?: return emptyList()
         return metasSection.getKeys(false).map { key ->
             val metaSection = metasSection.getConfigurationSection(key)
-            DefaultMeta(
-                id = key,
-                scripts = parseHooks(
-                    metaSection?.getConfigurationSection("scripts"),
-                    metaSection?.getConfigurationSection("event")
+            val source = metaSection?.let(::sectionToMap) ?: anyToMap(metasSection.get(key))
+            val scripts = if (metaSection != null) {
+                parseHooks(
+                    metaSection.getConfigurationSection("scripts"),
+                    metaSection.getConfigurationSection("event")
                 )
-            )
+            } else {
+                parseHooksFromMaps(
+                    anyToMap(source["scripts"]),
+                    anyToMap(source["event"])
+                )
+            }
+
+            val factoryType = resolveMetaFactoryType(source)
+            if (!factoryType.isNullOrBlank()) {
+                val factory = resolveMetaFactory(manager, factoryType)
+                if (factory == null) {
+                    warning("[Baikiruto] Missing meta factory '$factoryType' for meta '$key', fallback to default meta.")
+                } else {
+                    val created = runCatching {
+                        factory.create(key, source, scripts)
+                    }.onFailure {
+                        warning(
+                            "[Baikiruto] Failed to create meta '$key' by factory '${factory.id}': ${it.message}. " +
+                                "Fallback to default meta."
+                        )
+                    }.getOrNull()
+                    if (created != null) {
+                        return@map created
+                    }
+                }
+            }
+
+            DefaultMeta(id = key, scripts = scripts)
         }
+    }
+
+    private fun resolveMetaFactoryType(source: Map<String, Any?>): String? {
+        return stringValue(source["type"])
+            ?: stringValue(source["factory"])
+            ?: stringValue(source["meta_factory"])
+            ?: stringValue(source["meta-factory"])
+    }
+
+    private fun resolveMetaFactory(manager: ItemManager, rawType: String): org.tabooproject.baikiruto.core.item.MetaFactory? {
+        val source = rawType.trim()
+        if (source.isEmpty()) {
+            return null
+        }
+        val normalized = source.lowercase(Locale.ENGLISH)
+        val namespaced = normalized.substringAfter(':')
+        return manager.getMetaFactory(source)
+            ?: manager.getMetaFactory(normalized)
+            ?: manager.getMetaFactory(namespaced)
     }
 
     private fun parseMergedHooks(section: ConfigurationSection, models: List<ItemModel>): ItemScriptHooks {
@@ -484,6 +530,19 @@ object ItemDefinitionLoader {
             }
             target[name] = script
         }
+    }
+
+    private fun parseHooksFromMaps(vararg sources: Map<String, Any?>): ItemScriptHooks {
+        val scripts = linkedMapOf<String, String?>()
+        sources.forEach { source ->
+            collectScriptEntriesFromMap(source, scripts)
+        }
+        val normalized = linkedMapOf<String, String?>()
+        scripts.forEach { (key, script) ->
+            val trigger = ItemScriptTrigger.fromKey(key) ?: return@forEach
+            normalized[trigger.name.lowercase(Locale.ENGLISH)] = script
+        }
+        return ItemScriptHooks.from(normalized)
     }
 
     private fun mergeModelRuntimeData(models: List<ItemModel>): Map<String, Any?> {

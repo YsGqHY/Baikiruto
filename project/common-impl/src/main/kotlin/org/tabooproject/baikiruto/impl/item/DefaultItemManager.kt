@@ -7,6 +7,7 @@ import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemDisplay
 import org.tabooproject.baikiruto.core.item.ItemGroup
 import org.tabooproject.baikiruto.core.item.ItemManager
+import org.tabooproject.baikiruto.core.item.MetaFactory
 import org.tabooproject.baikiruto.core.item.ItemModel
 import org.tabooproject.baikiruto.core.item.ItemStream
 import org.tabooproject.baikiruto.core.item.Registry
@@ -19,6 +20,7 @@ class DefaultItemManager : ItemManager {
     private val modelRegistry = ConcurrentRegistry<ItemModel>()
     private val displayRegistry = ConcurrentRegistry<ItemDisplay>()
     private val groupRegistry = ConcurrentRegistry<ItemGroup>()
+    private val metaFactoryRegistry = ConcurrentRegistry<MetaFactory>()
 
     override fun getItemRegistry(): Registry<Item> {
         return itemRegistry
@@ -34,6 +36,10 @@ class DefaultItemManager : ItemManager {
 
     override fun getGroupRegistry(): Registry<ItemGroup> {
         return groupRegistry
+    }
+
+    override fun getMetaFactoryRegistry(): Registry<MetaFactory> {
+        return metaFactoryRegistry
     }
 
     override fun registerItem(item: Item): Item {
@@ -52,6 +58,14 @@ class DefaultItemManager : ItemManager {
         return groupRegistry.register(group.id, group)
     }
 
+    override fun registerMetaFactory(metaFactory: MetaFactory): MetaFactory {
+        return metaFactoryRegistry.register(metaFactory.id, metaFactory)
+    }
+
+    override fun unregisterMetaFactory(metaFactoryId: String): MetaFactory? {
+        return metaFactoryRegistry.unregister(metaFactoryId)
+    }
+
     override fun getItem(itemId: String): Item? {
         return itemRegistry.get(itemId)
     }
@@ -66,6 +80,10 @@ class DefaultItemManager : ItemManager {
 
     override fun getGroup(groupId: String): ItemGroup? {
         return groupRegistry.get(groupId)
+    }
+
+    override fun getMetaFactory(metaFactoryId: String): MetaFactory? {
+        return metaFactoryRegistry.get(metaFactoryId)
     }
 
     override fun generateItem(itemId: String, context: Map<String, Any?>): ItemStream? {

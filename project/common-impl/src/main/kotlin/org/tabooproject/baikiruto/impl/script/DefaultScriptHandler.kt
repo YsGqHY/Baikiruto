@@ -3,6 +3,7 @@ package org.tabooproject.baikiruto.impl.script
 import org.bukkit.command.CommandSender
 import org.tabooproject.baikiruto.core.ScriptCacheStats
 import org.tabooproject.baikiruto.core.BaikirutoScriptHandler
+import org.tabooproject.baikiruto.impl.script.handler.Fluxon
 import org.tabooproject.baikiruto.impl.script.handler.FluxonHandler
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
@@ -20,23 +21,23 @@ import java.util.concurrent.atomic.AtomicBoolean
 class DefaultScriptHandler : BaikirutoScriptHandler {
 
     override fun invoke(source: String, id: String, sender: CommandSender?, variables: Map<String, Any?>): Any? {
-        return fluxonHandler.invoke(source, id, sender, variables)
+        return resolveFluxonHandler().invoke(source, id, sender, variables)
     }
 
     override fun preheat(source: String, id: String) {
-        return fluxonHandler.preheat(source, id)
+        return resolveFluxonHandler().preheat(source, id)
     }
 
     override fun invalidate(id: String) {
-        fluxonHandler.invalidate(id)
+        resolveFluxonHandler().invalidate(id)
     }
 
     override fun invalidateByPrefix(prefix: String) {
-        fluxonHandler.invalidateByPrefix(prefix)
+        resolveFluxonHandler().invalidateByPrefix(prefix)
     }
 
     override fun cacheStats(): ScriptCacheStats {
-        return fluxonHandler.cacheStats()
+        return resolveFluxonHandler().cacheStats()
     }
 
     companion object {
@@ -46,11 +47,19 @@ class DefaultScriptHandler : BaikirutoScriptHandler {
 
         lateinit var fluxonHandler: FluxonHandler
 
+        fun resolveFluxonHandler(): FluxonHandler {
+            return if (::fluxonHandler.isInitialized) {
+                fluxonHandler
+            } else {
+                Fluxon
+            }
+        }
+
         @Awake(LifeCycle.LOAD)
         fun init() {
             if (registered.compareAndSet(false, true)) {
                 PlatformFactory.registerAPI<BaikirutoScriptHandler>(DefaultScriptHandler())
-                info("[Baikiruto] Script handler registered in LOAD.")
+                info("[Baikiruto] Script handler registered in LOAD (engine=Fluxon).")
             }
         }
     }

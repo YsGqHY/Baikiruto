@@ -35,6 +35,9 @@ object BaikirutoSettings {
     @ConfigNode("operations.watcher.debounce-ticks")
     var watcherDebounceTicks = 20L
 
+    @ConfigNode("operations.reload-online-update.enabled")
+    var reloadOnlineUpdateEnabled = true
+
     @ConfigNode("operations.performance-log.enabled")
     var performanceLogEnabled = true
 
@@ -46,7 +49,7 @@ object BaikirutoSettings {
         conf.onReload {
             info(
                 "[Baikiruto] Config reloaded: debug=$debug, preheat=$scriptPreheatEnabled, " +
-                    "watcherEnabled=$watcherEnabled"
+                    "watcherEnabled=$watcherEnabled, reloadOnlineUpdate=$reloadOnlineUpdateEnabled"
             )
         }
     }

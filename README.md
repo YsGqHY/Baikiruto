@@ -1,37 +1,37 @@
-# Baikiruto
+﻿## Baikiruto Plugin
 
-Baikiruto 是基于 TabooLib 的跨版本物品库插件，目标支持 Minecraft 1.12 - 1.21.11。
+Baikiruto 是基于 TabooLib 的跨版本物品插件，面向高自定义、可脚本化、可热重载的服务器物品体系。
 
-## 模块结构
+- 覆盖 Minecraft `1.12 - 1.21.11` 物品能力
+- Fluxon Only 脚本执行链路
+- 面向实战的物品构建、读回、重构与在线更新
 
-- `project:common`：公共 API、ItemStream/Item/Meta 模型
-- `project:common-impl`：默认实现、脚本融合、重载/诊断能力
-- `project:module-bukkit`：Bukkit 启动层
-- `project:module-v1_12`：1.12 版本适配
-- `project:module-v1_20_4`：1.20.4 版本适配
-- `project:module-v1_21`：1.21.x 版本适配（core 依赖 `ink.ptms.core:v12110:12110`）
-- `plugin`：最终聚合打包模块
+## 功能特性
 
-## 关键命令
+- 跨版本物品配置与生成（含模型、显示、分组、元数据）
+- `ItemStream` 运行时数据流：`build / read / rebuild / update`
+- `components` 简化解析：
+- 自动兼容 `minecraft:` 前缀与无前缀写法
+- 支持扁平文本（如 `&6Example`）与结构化文本配置
+- Meta 扩展机制（`MetaFactory`）：
+- 支持注册与注销自定义工厂
+- 支持配置侧按 `metas.type` 动态分发
+- 管理能力：
+- `list / give / serialize / rebuild / menu / reload / selfcheck`
+- 分组 GUI 浏览与发放
+- reload 后在线玩家物品自动更新检查
 
-- `/baikiruto debug build [itemId]`
-- `/baikiruto reload`
-- `/baikiruto reload items`
-- `/baikiruto reload scripts`
-- `/baikiruto selfcheck`
+## 版本信息
 
-## 文档
+| 项目 | 内容 |
+| --- | --- |
+| 插件定位 | 跨版本物品系统 |
+| 脚本引擎 | Fluxon Only |
+| Kether 支持 | 不提供 |
+| 兼容版本 | 1.12 - 1.21.11 |
 
-- `docs/开发计划.md`
-- `docs/开发约定.md`
-- `docs/快速开始.md`
-- `docs/脚本示例.md`
-- `docs/版本支持表.md`
-- `docs/排障指南.md`
-- `docs/发布清单.md`
+## 适用场景
 
-## 构建
-
-```bash
-./gradlew build
-```
+- RPG 物品系统
+- 带脚本行为的技能/装备体系
+- 需要频繁调配置并热更新的服务器

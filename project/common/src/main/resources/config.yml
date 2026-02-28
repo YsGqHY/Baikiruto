@@ -27,6 +27,10 @@ operations:
     # Delay before watcher reload task executes.
     debounce-ticks: 20
 
+  reload-online-update:
+    # Automatically check/update online players' inventories after item reload.
+    enabled: true
+
   performance-log:
     # Enable periodic performance and cache metric output.
     enabled: true

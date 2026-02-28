@@ -1,0 +1,7 @@
+dependencies {
+    compileOnly(project(":project:common"))
+    compileOnly("ink.ptms.core:v12110:12110:mapped")
+    compileOnly("ink.ptms.core:v12110:12110:universal")
+}
+
+taboolib { subproject = true }

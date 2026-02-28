@@ -1,19 +1,24 @@
 package org.tabooproject.baikiruto.impl.command
 
+import org.bukkit.Bukkit
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.impl.item.ItemDefinitionLoader
+import org.tabooproject.baikiruto.impl.menu.BaikirutoGroupMenu
 import org.tabooproject.baikiruto.impl.ops.BaikirutoDiagnostics
 import org.tabooproject.baikiruto.impl.ops.BaikirutoReloader
 import taboolib.common.platform.command.CommandBody
 import taboolib.common.platform.command.CommandHeader
 import taboolib.common.platform.command.mainCommand
 import taboolib.common.platform.command.subCommand
+import taboolib.common.platform.command.suggest
+import taboolib.common.platform.command.suggestUncheck
+import taboolib.platform.util.isAir
 
 @CommandHeader(
     name = "baikiruto",
-    aliases = ["bkr"],
+    aliases = ["bkr", "bai"],
     permission = "baikiruto.command"
 )
 object BaikirutoCommand {
@@ -22,7 +27,7 @@ object BaikirutoCommand {
 
     @CommandBody(permission = "baikiruto.command")
     val main = mainCommand {
-        execute<CommandSender> { sender, _, _ ->
+        exec<CommandSender> {
             sender.sendMessage("Baikiruto is running. Try /baikiruto debug build <itemId> or /baikiruto reload.")
         }
     }
@@ -30,23 +35,89 @@ object BaikirutoCommand {
     @CommandBody(permission = "baikiruto.command.reload")
     val reload = subCommand {
         literal("items") {
-            execute<CommandSender> { sender, _, _ ->
+            exec<CommandSender> {
                 sender.sendMessage(BaikirutoReloader.reloadItems())
             }
         }
         literal("scripts") {
-            execute<CommandSender> { sender, _, _ ->
+            exec<CommandSender> {
                 sender.sendMessage(BaikirutoReloader.reloadScripts())
             }
         }
         literal("debug") {
-            execute<CommandSender> { sender, _, _ ->
+            exec<CommandSender> {
                 sender.sendMessage("Reload debug snapshot:")
                 BaikirutoDiagnostics.lines().forEach(sender::sendMessage)
             }
         }
-        execute<CommandSender> { sender, _, _ ->
+        exec<CommandSender> {
             sender.sendMessage(BaikirutoReloader.reloadAll())
+        }
+    }
+
+    @CommandBody(permission = "baikiruto.command.list")
+    val list = subCommand {
+        dynamic("keyword") {
+            exec<CommandSender> {
+                executeList(sender, ctx["keyword"])
+            }
+        }
+        exec<CommandSender> {
+            executeList(sender, null)
+        }
+    }
+
+    @CommandBody(permission = "baikiruto.command.give")
+    val give = subCommand {
+        dynamic("itemId") {
+            suggestUncheck {
+                Baikiruto.api().getItemRegistry().keys().sorted()
+            }
+            dynamic("targetOrAmount") {
+                suggestUncheck {
+                    Bukkit.getOnlinePlayers().map { it.name }.sorted() + listOf("1", "16", "64")
+                }
+                dynamic("amount") {
+                    exec<CommandSender> {
+                        executeGiveFromCommand(sender, ctx["itemId"], ctx["targetOrAmount"], ctx["amount"])
+                    }
+                }
+                exec<CommandSender> {
+                    executeGiveFromCommand(sender, ctx["itemId"], ctx["targetOrAmount"], null)
+                }
+            }
+            exec<CommandSender> {
+                executeGiveSelf(sender, ctx["itemId"], 1)
+            }
+        }
+    }
+
+    @CommandBody(permission = "baikiruto.command.serialize")
+    val serialize = subCommand {
+        exec<CommandSender> {
+            executeSerialize(sender)
+        }
+    }
+
+    @CommandBody(permission = "baikiruto.command.rebuild")
+    val rebuild = subCommand {
+        exec<CommandSender> {
+            executeRebuild(sender)
+        }
+    }
+
+    @CommandBody(permission = "baikiruto.command.menu")
+    val menu = subCommand {
+        dynamic("groupId") {
+            suggestUncheck {
+                Baikiruto.api().getGroupRegistry().keys().sorted()
+            }
+            exec<CommandSender> {
+                executeMenu(sender, ctx["groupId"])
+            }
+        }
+        exec<CommandSender> {
+            executeMenu(sender, null)
         }
     }
 
@@ -54,48 +125,48 @@ object BaikirutoCommand {
     val debug = subCommand {
         literal("build") {
             dynamic("itemId") {
-                suggestion<CommandSender>(uncheck = true) { _, _ ->
+                suggestUncheck {
                     Baikiruto.api().getItemRegistry().keys().sorted()
                 }
-                execute<CommandSender> { sender, context, _ ->
-                    val itemId = context["itemId"]
+                exec<CommandSender> {
+                    val itemId = ctx["itemId"]
                     executeBuild(sender, itemId)
                 }
             }
-            execute<CommandSender> { sender, _, _ ->
+            exec<CommandSender> {
                 executeBuild(sender, DEFAULT_ITEM_ID)
             }
         }
         literal("give") {
             dynamic("itemId") {
-                suggestion<CommandSender>(uncheck = true) { _, _ ->
+                suggestUncheck {
                     Baikiruto.api().getItemRegistry().keys().sorted()
                 }
                 dynamic("amount") {
-                    execute<CommandSender> { sender, context, _ ->
-                        executeGive(sender, context["itemId"], context["amount"]?.toIntOrNull() ?: 1)
+                    exec<CommandSender> {
+                        executeGiveSelf(sender, ctx["itemId"], ctx["amount"].toIntOrNull() ?: 1)
                     }
                 }
-                execute<CommandSender> { sender, context, _ ->
-                    executeGive(sender, context["itemId"], 1)
+                exec<CommandSender> {
+                    executeGiveSelf(sender, ctx["itemId"], 1)
                 }
             }
-            execute<CommandSender> { sender, _, _ ->
-                executeGive(sender, DEFAULT_ITEM_ID, 1)
+            exec<CommandSender> {
+                executeGiveSelf(sender, DEFAULT_ITEM_ID, 1)
             }
         }
         literal("metrics") {
-            execute<CommandSender> { sender, _, _ ->
+            exec<CommandSender> {
                 BaikirutoDiagnostics.lines().forEach(sender::sendMessage)
             }
         }
         literal("read") {
-            execute<CommandSender> { sender, _, _ ->
+            exec<CommandSender> {
                 executeRead(sender)
             }
         }
         literal("update") {
-            execute<CommandSender> { sender, _, _ ->
+            exec<CommandSender> {
                 executeUpdate(sender)
             }
         }
@@ -103,7 +174,7 @@ object BaikirutoCommand {
 
     @CommandBody(permission = "baikiruto.command.debug")
     val selfcheck = subCommand {
-        execute<CommandSender> { sender, _, _ ->
+        exec<CommandSender> {
             sender.sendMessage("Baikiruto selfcheck:")
             BaikirutoDiagnostics.lines().forEach(sender::sendMessage)
             sender.sendMessage("Registered items: ${ItemDefinitionLoader.loadedIds().joinToString(", ")}")
@@ -126,6 +197,28 @@ object BaikirutoCommand {
             return
         }
         sender.sendMessage("Build success: $itemId -> ${result.type} x${result.amount}")
+    }
+
+    private fun executeList(sender: CommandSender, keyword: String?) {
+        val allItems = Baikiruto.api().getItemRegistry().keys().sorted()
+        if (allItems.isEmpty()) {
+            sender.sendMessage("No managed items loaded.")
+            return
+        }
+        val normalizedKeyword = keyword?.trim()?.takeIf { it.isNotEmpty() }
+        val filtered = if (normalizedKeyword == null) {
+            allItems
+        } else {
+            allItems.filter { id -> id.contains(normalizedKeyword, ignoreCase = true) }
+        }
+        if (filtered.isEmpty()) {
+            sender.sendMessage("No managed item matched keyword '$normalizedKeyword'.")
+            return
+        }
+        sender.sendMessage("Managed items (${filtered.size}/${allItems.size}):")
+        filtered.forEach { id ->
+            sender.sendMessage("- $id")
+        }
     }
 
     private fun executeRead(sender: CommandSender) {
@@ -164,26 +257,149 @@ object BaikirutoCommand {
         sender.sendMessage("Inventory update check complete. updated=$updated")
     }
 
-    private fun executeGive(sender: CommandSender, itemId: String, amount: Int) {
+    private fun executeSerialize(sender: CommandSender) {
+        val player = sender as? Player
+        if (player == null) {
+            sender.sendMessage("Only player can serialize held item.")
+            return
+        }
+        val item = player.inventory.itemInMainHand
+        if (item.isAir()) {
+            sender.sendMessage("Main-hand item is empty.")
+            return
+        }
+        val serialized = Baikiruto.api().getItemSerializer().serialize(item)
+        sender.sendMessage("Serialized item:")
+        sender.sendMessage("- itemId: ${serialized.itemId}")
+        sender.sendMessage("- amount: ${serialized.amount}")
+        sender.sendMessage("- version: ${serialized.versionHash}")
+        sender.sendMessage("- metas: ${if (serialized.metaHistory.isEmpty()) "[]" else serialized.metaHistory.joinToString(", ", "[", "]")}")
+        if (serialized.runtimeData.isEmpty()) {
+            sender.sendMessage("- runtimeData: {}")
+        } else {
+            sender.sendMessage("- runtimeData:")
+            serialized.runtimeData.entries.sortedBy { it.key }.forEach { (key, value) ->
+                sender.sendMessage("  - $key: $value")
+            }
+        }
+        val encoded = serialized.itemStackData
+        val preview = if (encoded.length > 96) {
+            encoded.substring(0, 96) + "..."
+        } else {
+            encoded
+        }
+        sender.sendMessage("- itemStackData(length=${encoded.length}): $preview")
+    }
+
+    private fun executeRebuild(sender: CommandSender) {
+        val player = sender as? Player
+        if (player == null) {
+            sender.sendMessage("Only player can rebuild held item.")
+            return
+        }
+        val current = player.inventory.itemInMainHand
+        if (current.isAir()) {
+            sender.sendMessage("Main-hand item is empty.")
+            return
+        }
+        val stream = Baikiruto.api().readItem(current)
+        if (stream == null) {
+            sender.sendMessage("Current main-hand item is not managed by Baikiruto.")
+            return
+        }
+        val item = Baikiruto.api().getItem(stream.itemId)
+        if (item == null) {
+            sender.sendMessage("Managed item '${stream.itemId}' is no longer registered.")
+            return
+        }
+        val rebuilt = item.build(
+            linkedMapOf<String, Any?>(
+                "player" to player,
+                "sender" to sender,
+                "ctx" to stream.runtimeData,
+                "reason" to "manual_rebuild"
+            )
+        )
+        stream.runtimeData.forEach { (key, value) ->
+            rebuilt.setRuntimeData(key, value)
+        }
+        val rebuiltStack = rebuilt.toItemStack().apply {
+            amount = current.amount.coerceAtLeast(1)
+        }
+        player.inventory.setItemInMainHand(rebuiltStack)
+        player.updateInventory()
+        sender.sendMessage("Rebuild complete: ${stream.itemId} ${stream.versionHash} -> ${rebuilt.versionHash}")
+    }
+
+    private fun executeMenu(sender: CommandSender, groupId: String?) {
+        val player = sender as? Player
+        if (player == null) {
+            sender.sendMessage("Only player can open group menu.")
+            return
+        }
+        val opened = BaikirutoGroupMenu.open(player, groupId)
+        if (!opened) {
+            sender.sendMessage("Group '${groupId?.trim()}' does not exist.")
+        }
+    }
+
+    private fun executeGiveSelf(sender: CommandSender, itemId: String, amount: Int) {
         val player = sender as? Player
         if (player == null) {
             sender.sendMessage("Only player can receive managed item.")
             return
         }
+        executeGive(sender, player, itemId, amount)
+    }
+
+    private fun executeGiveFromCommand(
+        sender: CommandSender,
+        itemId: String,
+        targetOrAmount: String?,
+        amountRaw: String?
+    ) {
+        val normalized = targetOrAmount?.trim().orEmpty()
+        if (normalized.isEmpty()) {
+            executeGiveSelf(sender, itemId, 1)
+            return
+        }
+        val amountCandidate = normalized.toIntOrNull()
+        if (amountCandidate != null) {
+            if (!amountRaw.isNullOrBlank()) {
+                sender.sendMessage("Usage: /baikiruto give <itemId> [player] [amount]")
+                return
+            }
+            executeGiveSelf(sender, itemId, amountCandidate)
+            return
+        }
+        val target = Bukkit.getPlayerExact(normalized) ?: Bukkit.getPlayer(normalized)
+        if (target == null) {
+            sender.sendMessage("Player '$normalized' is not online.")
+            return
+        }
+        val amount = amountRaw?.toIntOrNull() ?: 1
+        executeGive(sender, target, itemId, amount)
+    }
+
+    private fun executeGive(sender: CommandSender, target: Player, itemId: String, amount: Int) {
         if (Baikiruto.api().getItem(itemId) == null) {
             sender.sendMessage("Item '$itemId' is not registered.")
             return
         }
         val success = Baikiruto.api().getItemManager().giveItem(
-            player = player,
+            player = target,
             itemId = itemId,
             amount = amount.coerceAtLeast(1),
-            context = mapOf("debug" to true)
+            context = mapOf(
+                "debug" to true,
+                "sender" to sender,
+                "target" to target
+            )
         )
         if (!success) {
             sender.sendMessage("Give cancelled by listener.")
             return
         }
-        sender.sendMessage("Given ${amount.coerceAtLeast(1)}x $itemId.")
+        sender.sendMessage("Given ${amount.coerceAtLeast(1)}x $itemId to ${target.name}.")
     }
 }

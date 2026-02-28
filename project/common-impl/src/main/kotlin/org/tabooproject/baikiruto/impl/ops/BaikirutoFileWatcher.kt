@@ -1,7 +1,6 @@
 package org.tabooproject.baikiruto.impl.ops
 
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
-import org.tabooproject.baikiruto.impl.item.ItemDefinitionLoader
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
 import taboolib.common.platform.function.getDataFolder
@@ -82,7 +81,7 @@ object BaikirutoFileWatcher {
         val delayTicks = BaikirutoSettings.watcherDebounceTicks.coerceAtLeast(1L)
         submit(delay = delayTicks) {
             try {
-                ItemDefinitionLoader.reloadItems(source)
+                BaikirutoReloader.reloadItemsFromWatcher(source)
             } catch (ex: Throwable) {
                 warning("[Baikiruto] File watcher reload failed: ${ex.message}")
             } finally {

@@ -15,6 +15,7 @@ object DefaultItemBootstrap {
     @Awake(LifeCycle.ENABLE)
     private fun init() {
         val api = Baikiruto.api()
+        api.registerMetaFactory(ScriptMetaFactory)
         if (api.getItem(DEBUG_ITEM_ID) != null) {
             return
         }

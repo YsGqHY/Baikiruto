@@ -13,6 +13,8 @@ interface ItemManager {
 
     fun getGroupRegistry(): Registry<ItemGroup>
 
+    fun getMetaFactoryRegistry(): Registry<MetaFactory>
+
     fun registerItem(item: Item): Item
 
     fun registerModel(model: ItemModel): ItemModel
@@ -21,6 +23,10 @@ interface ItemManager {
 
     fun registerGroup(group: ItemGroup): ItemGroup
 
+    fun registerMetaFactory(metaFactory: MetaFactory): MetaFactory
+
+    fun unregisterMetaFactory(metaFactoryId: String): MetaFactory?
+
     fun getItem(itemId: String): Item?
 
     fun getModel(modelId: String): ItemModel?
@@ -28,6 +34,8 @@ interface ItemManager {
     fun getDisplay(displayId: String): ItemDisplay?
 
     fun getGroup(groupId: String): ItemGroup?
+
+    fun getMetaFactory(metaFactoryId: String): MetaFactory?
 
     fun generateItem(itemId: String, context: Map<String, Any?> = emptyMap()): ItemStream?
 

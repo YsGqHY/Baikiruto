@@ -6,6 +6,7 @@ import org.tabooproject.baikiruto.core.BaikirutoScriptHandler
 import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemDisplay
 import org.tabooproject.baikiruto.core.item.ItemGroup
+import org.tabooproject.baikiruto.core.item.ItemHandler
 import org.tabooproject.baikiruto.core.item.ItemManager
 import org.tabooproject.baikiruto.core.item.ItemModel
 import org.tabooproject.baikiruto.core.item.ItemSerializer
@@ -13,10 +14,10 @@ import org.tabooproject.baikiruto.core.item.ItemStream
 import org.tabooproject.baikiruto.core.item.ItemUpdater
 import org.tabooproject.baikiruto.core.item.Registry
 import org.tabooproject.baikiruto.core.item.event.ItemEventBus
+import org.tabooproject.baikiruto.impl.item.DefaultItemHandler
 import org.tabooproject.baikiruto.impl.item.DefaultItemManager
 import org.tabooproject.baikiruto.impl.item.DefaultItemSerializer
 import org.tabooproject.baikiruto.impl.item.DefaultItemUpdater
-import org.tabooproject.baikiruto.impl.item.ItemStreamTransport
 import org.tabooproject.baikiruto.impl.item.event.DefaultItemEventBus
 import org.tabooproject.baikiruto.impl.log.BaikirutoLog
 import taboolib.common.platform.PlatformFactory
@@ -31,6 +32,7 @@ import taboolib.common.platform.PlatformFactory
 class DefaultBaikirutoAPI : BaikirutoAPI {
 
     private val itemManager = DefaultItemManager()
+    private val itemHandler = DefaultItemHandler(itemManager)
     private val itemSerializer = DefaultItemSerializer
     private val itemUpdater = DefaultItemUpdater
     private val itemEventBus = DefaultItemEventBus
@@ -46,6 +48,10 @@ class DefaultBaikirutoAPI : BaikirutoAPI {
 
     override fun getItemManager(): ItemManager {
         return itemManager
+    }
+
+    override fun getItemHandler(): ItemHandler {
+        return itemHandler
     }
 
     override fun getItemRegistry(): Registry<Item> {
@@ -77,8 +83,7 @@ class DefaultBaikirutoAPI : BaikirutoAPI {
     }
 
     override fun readItem(itemStack: ItemStack): ItemStream? {
-        val payload = ItemStreamTransport.read(itemStack) ?: return null
-        return ItemStreamTransport.create(itemStack, payload)
+        return itemHandler.read(itemStack)
     }
 
     override fun getItemSerializer(): ItemSerializer {

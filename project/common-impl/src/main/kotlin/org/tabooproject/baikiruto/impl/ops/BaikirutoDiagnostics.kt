@@ -14,6 +14,7 @@ object BaikirutoDiagnostics {
         val version = VersionAdapterService.currentProfile()
         return listOf(
             "server=${runCatching { Bukkit.getBukkitVersion() }.getOrDefault("unknown")}",
+            "scriptEngine=FLUXON_ONLY",
             "versionProfile=${version.profileId}",
             "storageMode=${if (version.dataComponentStorage) "DATA_COMPONENTS" else "LEGACY_NBT"}",
             "customModelData=${version.supportsCustomModelData}",
