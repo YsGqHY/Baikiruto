@@ -437,8 +437,7 @@ class DefaultItemStream(
     }
 
     private fun parseDisplayName(raw: Any?): String? {
-        return when (raw) {
-            is String -> raw
+        return ComponentConfigParser.parseText(raw) ?: when (raw) {
             is Map<*, *> -> {
                 (raw["item_name"] as? String)
                     ?: raw.entries.firstNotNullOfOrNull { (_, value) -> value as? String }
@@ -448,6 +447,10 @@ class DefaultItemStream(
     }
 
     private fun parseLore(raw: Any?): List<String> {
+        val parsed = ComponentConfigParser.parseTextList(raw)
+        if (parsed.isNotEmpty()) {
+            return parsed
+        }
         return when (raw) {
             is String -> raw.split('\n')
             is Iterable<*> -> raw.filterIsInstance<String>().flatMap { it.split('\n') }

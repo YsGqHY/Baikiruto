@@ -1,8 +1,7 @@
 package org.tabooproject.baikiruto.impl.item
 
 import taboolib.library.configuration.ConfigurationSection
-import taboolib.module.configuration.Configuration
-import taboolib.module.configuration.Type
+import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -89,9 +88,7 @@ class ItemDefinitionLoaderCompatibilityTest {
 
     @Test
     fun `should split newline in direct lore list`() {
-        val section = yamlSection {
-            set("lore", listOf("&aLine-1\n&bLine-2", "&eLine-3"))
-        }
+        val section = sectionOf(mapOf("lore" to listOf("&aLine-1\n&bLine-2", "&eLine-3")))
         assertEquals(
             listOf("&aLine-1", "&bLine-2", "&eLine-3"),
             invokeSectionListMethod("parseLore", section)
@@ -100,9 +97,7 @@ class ItemDefinitionLoaderCompatibilityTest {
 
     @Test
     fun `should split newline in direct lore map list`() {
-        val section = yamlSection {
-            set("lore", listOf("&aLine-1\n&bLine-2", "&eLine-3"))
-        }
+        val section = sectionOf(mapOf("lore" to listOf("&aLine-1\n&bLine-2", "&eLine-3")))
         val loreMap = invokeSectionMapMethod("parseLoreMap", section)
         assertEquals(
             listOf("&aLine-1", "&bLine-2", "&eLine-3"),
@@ -148,7 +143,134 @@ class ItemDefinitionLoaderCompatibilityTest {
         return method.invoke(ItemDefinitionLoader, line, size) as List<String>
     }
 
-    private fun yamlSection(builder: Configuration.() -> Unit): ConfigurationSection {
-        return Configuration.empty(Type.YAML).apply(builder)
+    private fun sectionOf(
+        data: Map<String, Any?>,
+        name: String = "root",
+        parent: ConfigurationSection? = null
+    ): ConfigurationSection {
+        fun resolve(path: String): Any? {
+            if (path.isBlank()) {
+                return data
+            }
+            return path.split('.')
+                .filter { it.isNotBlank() }
+                .fold(data as Any?) { current, key ->
+                    (current as? Map<*, *>)?.get(key)
+                }
+        }
+
+        return Proxy.newProxyInstance(
+            ConfigurationSection::class.java.classLoader,
+            arrayOf(ConfigurationSection::class.java)
+        ) { _, method, args ->
+            when (method.name) {
+                "getPrimitiveConfig" -> null
+                "getParent" -> parent
+                "getName" -> name
+                "setName" -> null
+                "getType" -> null
+                "getKeys" -> data.keys
+                "contains", "isSet" -> resolve(args?.get(0) as String) != null
+                "get" -> {
+                    val path = args?.get(0) as String
+                    val default = args.getOrNull(1)
+                    resolve(path) ?: default
+                }
+                "set" -> null
+                "getString" -> {
+                    val value = resolve(args?.get(0) as String)
+                    (value as? String) ?: value?.toString() ?: args?.getOrNull(1)
+                }
+                "isString" -> resolve(args?.get(0) as String) is String
+                "getInt" -> {
+                    val value = resolve(args?.get(0) as String)
+                    when (value) {
+                        is Number -> value.toInt()
+                        is String -> value.toIntOrNull()
+                        else -> args?.getOrNull(1) ?: 0
+                    }
+                }
+                "isInt" -> {
+                    val value = resolve(args?.get(0) as String)
+                    value is Number || (value is String && value.toIntOrNull() != null)
+                }
+                "getBoolean" -> {
+                    val value = resolve(args?.get(0) as String)
+                    when (value) {
+                        is Boolean -> value
+                        is Number -> value.toInt() != 0
+                        is String -> value.equals("true", true) || value == "1"
+                        else -> args?.getOrNull(1) ?: false
+                    }
+                }
+                "isBoolean" -> resolve(args?.get(0) as String) is Boolean
+                "getDouble" -> {
+                    val value = resolve(args?.get(0) as String)
+                    when (value) {
+                        is Number -> value.toDouble()
+                        is String -> value.toDoubleOrNull()
+                        else -> args?.getOrNull(1) ?: 0.0
+                    }
+                }
+                "isDouble" -> {
+                    val value = resolve(args?.get(0) as String)
+                    value is Number || (value is String && value.toDoubleOrNull() != null)
+                }
+                "getLong" -> {
+                    val value = resolve(args?.get(0) as String)
+                    when (value) {
+                        is Number -> value.toLong()
+                        is String -> value.toLongOrNull()
+                        else -> args?.getOrNull(1) ?: 0L
+                    }
+                }
+                "isLong" -> {
+                    val value = resolve(args?.get(0) as String)
+                    value is Number || (value is String && value.toLongOrNull() != null)
+                }
+                "getList" -> {
+                    val value = resolve(args?.get(0) as String)
+                    value as? List<*> ?: args?.getOrNull(1) as? List<*> ?: emptyList<Any?>()
+                }
+                "isList" -> resolve(args?.get(0) as String) is List<*>
+                "getStringList" -> {
+                    val value = resolve(args?.get(0) as String)
+                    when (value) {
+                        is List<*> -> value.mapNotNull { it?.toString() }
+                        is String -> listOf(value)
+                        else -> emptyList<String>()
+                    }
+                }
+                "getIntegerList", "getBooleanList", "getDoubleList", "getFloatList",
+                "getLongList", "getByteList", "getCharacterList", "getShortList",
+                "getMapList", "getEnumList" -> emptyList<Any>()
+                "getConfigurationSection" -> {
+                    val value = resolve(args?.get(0) as String)
+                    when (value) {
+                        is ConfigurationSection -> value
+                        is Map<*, *> -> sectionOf(value as Map<String, Any?>, args[0] as String, null)
+                        else -> null
+                    }
+                }
+                "isConfigurationSection" -> resolve(args?.get(0) as String) is Map<*, *>
+                "getEnum" -> null
+                "createSection" -> {
+                    val key = args?.get(0) as String
+                    sectionOf(emptyMap(), key, null)
+                }
+                "toMap", "getValues" -> data
+                "getComment" -> null
+                "getComments" -> emptyList<String>()
+                "setComment", "setComments", "addComments", "clear" -> null
+                else -> when (method.returnType) {
+                    java.lang.Boolean.TYPE -> false
+                    java.lang.Integer.TYPE -> 0
+                    java.lang.Long.TYPE -> 0L
+                    java.lang.Double.TYPE -> 0.0
+                    java.lang.Float.TYPE -> 0f
+                    else -> null
+                }
+            }
+        } as ConfigurationSection
     }
 }
