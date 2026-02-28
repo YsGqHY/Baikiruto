@@ -30,6 +30,8 @@ object ItemDefinitionLoader {
     private const val DEFAULT_ITEM_FILE = "items/example.yml"
     private const val DEFAULT_DISPLAY_FILE = "display/def.yml"
     private const val LEGACY_COLOR_CODES = "0123456789AaBbCcDdEeFfKkLlMmNnOoRrXx"
+    private const val LOCKED_DATA_PATHS_KEY = "__locked_data_paths__"
+    private const val LOCKED_DISPLAY_FIELDS_KEY = "__locked_display_fields__"
     private val loadedItemIds = CopyOnWriteArraySet<String>()
     private data class ParsedFile(val file: File, val conf: Configuration)
 
@@ -452,6 +454,7 @@ object ItemDefinitionLoader {
                 modelDefaults,
                 displayRuntime,
                 itemDisplayRuntime,
+                parseDisplayLockMetadata(section, models),
                 itemComponents,
                 parseData(section.getConfigurationSection("data")),
                 parseDataMapper(section.getConfigurationSection("data-mapper")),
@@ -682,7 +685,7 @@ object ItemDefinitionLoader {
         val merged = linkedMapOf<String, Any?>()
         models.forEach { model ->
             val data = model.data
-            merged.putAll(normalizeLockedMap(anyToMap(data["data"])))
+            merged.putAll(parseData(anyToMap(data["data"])))
             merged.putAll(parseDataMapper(anyToMap(data["data-mapper"])))
             merged.putAll(anyToMap(data["effects"]))
             merged.putAll(parseMetaEffects(anyToMap(data["meta"])))
@@ -718,6 +721,61 @@ object ItemDefinitionLoader {
             data["lore"] = loreMap
         }
         return data
+    }
+
+    private fun parseDisplayLockMetadata(
+        section: ConfigurationSection,
+        models: List<ItemModel>
+    ): Map<String, Any?> {
+        val fields = linkedSetOf<String>()
+        if (containsLockedDisplayKey(section, setOf("display-name!!", "name!!")) ||
+            models.any { hasLockedDisplayKey(it.data, setOf("display-name!!", "name!!")) }
+        ) {
+            fields += "name"
+        }
+        if (containsLockedDisplayKey(section, setOf("lore!!")) ||
+            models.any { hasLockedDisplayKey(it.data, setOf("lore!!")) }
+        ) {
+            fields += "lore"
+        }
+        if (containsLockedDisplayKey(section, setOf("material!!", "icon!!", "type!!")) ||
+            models.any { hasLockedDisplayKey(it.data, setOf("material!!", "icon!!", "type!!")) }
+        ) {
+            fields += "icon"
+        }
+        return if (fields.isEmpty()) {
+            emptyMap()
+        } else {
+            mapOf(LOCKED_DISPLAY_FIELDS_KEY to fields.toList())
+        }
+    }
+
+    private fun containsLockedDisplayKey(section: ConfigurationSection, keys: Set<String>): Boolean {
+        return keys.any { key ->
+            section.contains(key) ||
+                section.getConfigurationSection(key) != null ||
+                !section.getString(key).isNullOrBlank()
+        }
+    }
+
+    private fun hasLockedDisplayKey(source: Map<String, Any?>, keys: Set<String>): Boolean {
+        if (source.isEmpty()) {
+            return false
+        }
+        source.forEach { (key, value) ->
+            if (key in keys) {
+                return true
+            }
+            when (value) {
+                is Map<*, *> -> if (hasLockedDisplayKey(anyToMap(value), keys)) {
+                    return true
+                }
+                is ConfigurationSection -> if (hasLockedDisplayKey(sectionToMap(value), keys)) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     private fun parseModelLore(runtimeDefaults: Map<String, Any?>): List<String> {
@@ -766,8 +824,20 @@ object ItemDefinitionLoader {
         return if (section == null) {
             emptyMap()
         } else {
-            normalizeLockedMap(sectionToMap(section))
+            parseData(sectionToMap(section))
         }
+    }
+
+    private fun parseData(source: Map<String, Any?>): Map<String, Any?> {
+        if (source.isEmpty()) {
+            return emptyMap()
+        }
+        val normalized = normalizeLockedMap(source).toMutableMap()
+        val lockedPaths = collectLockedPaths(source)
+        if (lockedPaths.isNotEmpty()) {
+            normalized[LOCKED_DATA_PATHS_KEY] = lockedPaths
+        }
+        return normalized
     }
 
     private fun parseEffects(section: ConfigurationSection?): Map<String, Any?> {
@@ -796,6 +866,26 @@ object ItemDefinitionLoader {
             is Iterable<*> -> value.map { entry -> normalizeLockedValue(entry) }
             else -> value
         }
+    }
+
+    private fun collectLockedPaths(source: Map<String, Any?>, prefix: String = ""): List<String> {
+        if (source.isEmpty()) {
+            return emptyList()
+        }
+        val paths = linkedSetOf<String>()
+        source.forEach { (key, rawValue) ->
+            val normalizedKey = key.trim().takeIf { it.isNotEmpty() } ?: return@forEach
+            val keyPath = normalizedKey.removeSuffix("!!")
+            val fullPath = if (prefix.isBlank()) keyPath else "$prefix.$keyPath"
+            if (normalizedKey.endsWith("!!")) {
+                paths += fullPath
+            }
+            when (rawValue) {
+                is Map<*, *> -> paths += collectLockedPaths(anyToMap(rawValue), fullPath)
+                is ConfigurationSection -> paths += collectLockedPaths(sectionToMap(rawValue), fullPath)
+            }
+        }
+        return paths.toList()
     }
 
     private fun parseDataMapper(section: ConfigurationSection?): Map<String, Any?> {
@@ -1601,8 +1691,44 @@ object ItemDefinitionLoader {
 
     private fun mergeRuntimeData(vararg chunks: Map<String, Any?>): Map<String, Any?> {
         val merged = linkedMapOf<String, Any?>()
+        val lockedPaths = linkedSetOf<String>()
+        val lockedDisplayFields = linkedSetOf<String>()
         chunks.forEach { chunk ->
-            merged.putAll(chunk)
+            chunk.forEach { (key, value) ->
+                if (key == LOCKED_DATA_PATHS_KEY) {
+                    when (value) {
+                        is Iterable<*> -> value.forEach { entry ->
+                            val path = entry?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+                            lockedPaths += path
+                        }
+                        is String -> value.split(',', '\n')
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .forEach(lockedPaths::add)
+                    }
+                    return@forEach
+                }
+                if (key == LOCKED_DISPLAY_FIELDS_KEY) {
+                    when (value) {
+                        is Iterable<*> -> value.forEach { entry ->
+                            val field = entry?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+                            lockedDisplayFields += field
+                        }
+                        is String -> value.split(',', '\n')
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .forEach(lockedDisplayFields::add)
+                    }
+                    return@forEach
+                }
+                merged[key] = value
+            }
+        }
+        if (lockedPaths.isNotEmpty()) {
+            merged[LOCKED_DATA_PATHS_KEY] = lockedPaths.toList()
+        }
+        if (lockedDisplayFields.isNotEmpty()) {
+            merged[LOCKED_DISPLAY_FIELDS_KEY] = lockedDisplayFields.toList()
         }
         return merged
     }

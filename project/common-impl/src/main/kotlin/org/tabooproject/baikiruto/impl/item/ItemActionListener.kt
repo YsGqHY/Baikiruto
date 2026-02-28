@@ -29,7 +29,24 @@ import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemScriptTrigger
 import org.tabooproject.baikiruto.core.item.ItemStream
 import org.tabooproject.baikiruto.core.item.event.ItemActionTriggerEvent
+import org.tabooproject.baikiruto.core.item.event.ItemAsyncTickActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemAttackActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemBlockBreakActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemConsumeActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemDamageActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemDropActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemInteractActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemInteractEntityActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemInventoryClickActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemInventoryClickTriggerEvent
+import org.tabooproject.baikiruto.core.item.event.ItemItemBreakActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemLeftClickActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemPickupActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemRightClickActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemSelectActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemSwapToMainhandActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemSwapToOffhandActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemUseActionEvent
 import org.tabooproject.baikiruto.impl.item.feature.ItemCombatFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDurabilityFeature
@@ -483,7 +500,7 @@ object ItemActionListener {
         var cancelled = false
         triggers.forEach { trigger ->
             val triggerContext = LinkedHashMap(baseContext)
-            val triggerEvent = ItemActionTriggerEvent(
+            val triggerEvent = createTriggerEvent(
                 stream = managed.stream,
                 player = player,
                 source = event,
@@ -510,6 +527,35 @@ object ItemActionListener {
             save = save,
             cancelled = cancelled
         )
+    }
+
+    private fun createTriggerEvent(
+        stream: ItemStream,
+        player: Player?,
+        source: Any?,
+        context: MutableMap<String, Any?>,
+        trigger: ItemScriptTrigger
+    ): ItemActionTriggerEvent {
+        return when (trigger) {
+            ItemScriptTrigger.SELECT -> ItemSelectActionEvent(stream, player, source, context)
+            ItemScriptTrigger.ASYNC_TICK -> ItemAsyncTickActionEvent(stream, player, source, context)
+            ItemScriptTrigger.INTERACT -> ItemInteractActionEvent(stream, player, source, context)
+            ItemScriptTrigger.LEFT_CLICK -> ItemLeftClickActionEvent(stream, player, source, context)
+            ItemScriptTrigger.RIGHT_CLICK -> ItemRightClickActionEvent(stream, player, source, context)
+            ItemScriptTrigger.USE -> ItemUseActionEvent(stream, player, source, context)
+            ItemScriptTrigger.RIGHT_CLICK_ENTITY -> ItemInteractEntityActionEvent(stream, player, source, context)
+            ItemScriptTrigger.ATTACK -> ItemAttackActionEvent(stream, player, source, context)
+            ItemScriptTrigger.DAMAGE -> ItemDamageActionEvent(stream, player, source, context)
+            ItemScriptTrigger.BLOCK_BREAK -> ItemBlockBreakActionEvent(stream, player, source, context)
+            ItemScriptTrigger.ITEM_BREAK -> ItemItemBreakActionEvent(stream, player, source, context)
+            ItemScriptTrigger.CONSUME -> ItemConsumeActionEvent(stream, player, source, context)
+            ItemScriptTrigger.PICKUP -> ItemPickupActionEvent(stream, player, source, context)
+            ItemScriptTrigger.DROP -> ItemDropActionEvent(stream, player, source, context)
+            ItemScriptTrigger.SWAP_TO_MAINHAND -> ItemSwapToMainhandActionEvent(stream, player, source, context)
+            ItemScriptTrigger.SWAP_TO_OFFHAND -> ItemSwapToOffhandActionEvent(stream, player, source, context)
+            ItemScriptTrigger.INVENTORY_CLICK -> ItemInventoryClickTriggerEvent(stream, player, source, context)
+            else -> ItemActionTriggerEvent(stream, player, source, context, trigger)
+        }
     }
 
     private fun resolveLocale(player: Player): String? {

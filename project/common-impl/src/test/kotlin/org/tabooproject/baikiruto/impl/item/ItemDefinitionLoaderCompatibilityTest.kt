@@ -1,6 +1,7 @@
 package org.tabooproject.baikiruto.impl.item
 
 import taboolib.library.configuration.ConfigurationSection
+import org.tabooproject.baikiruto.core.item.ItemModel
 import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -68,6 +69,46 @@ class ItemDefinitionLoaderCompatibilityTest {
     }
 
     @Test
+    fun `should collect locked data paths metadata`() {
+        val parsed = invokeMapMethod(
+            "parseData",
+            mapOf(
+                "root!!" to mapOf(
+                    "child" to "value"
+                ),
+                "plain" to mapOf(
+                    "deep!!" to 2
+                )
+            )
+        )
+
+        val lockedPaths = parsed["__locked_data_paths__"] as List<*>
+        assertTrue("root" in lockedPaths)
+        assertTrue("plain.deep" in lockedPaths)
+        val root = parsed["root"] as Map<*, *>
+        assertEquals("value", root["child"])
+    }
+
+    @Test
+    fun `should collect locked display fields metadata`() {
+        val section = sectionOf(
+            mapOf(
+                "name!!" to mapOf("item_name" to "&6Locked"),
+                "lore" to listOf("&7normal")
+            )
+        )
+        val metadata = invokeSectionModelMapMethod(
+            "parseDisplayLockMetadata",
+            section,
+            listOf(ItemModel("model-1", mapOf("icon!!" to "STONE", "lore!!" to listOf("&aL"))))
+        )
+        val fields = metadata["__locked_display_fields__"] as List<*>
+        assertTrue("name" in fields)
+        assertTrue("lore" in fields)
+        assertTrue("icon" in fields)
+    }
+
+    @Test
     fun `should parse script value from string list and map source`() {
         val fromList = invokeStringMethod("parseScriptValue", listOf("line-1", "line-2"))
         val fromMap = invokeStringMethod(
@@ -130,6 +171,21 @@ class ItemDefinitionLoaderCompatibilityTest {
         val method = ItemDefinitionLoader::class.java.getDeclaredMethod(name, ConfigurationSection::class.java)
         method.isAccessible = true
         return method.invoke(ItemDefinitionLoader, section) as List<String>
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun invokeSectionModelMapMethod(
+        name: String,
+        section: ConfigurationSection,
+        models: List<ItemModel>
+    ): Map<String, Any?> {
+        val method = ItemDefinitionLoader::class.java.getDeclaredMethod(
+            name,
+            ConfigurationSection::class.java,
+            List::class.java
+        )
+        method.isAccessible = true
+        return method.invoke(ItemDefinitionLoader, section, models) as Map<String, Any?>
     }
 
     @Suppress("UNCHECKED_CAST")

@@ -11,6 +11,7 @@ import org.tabooproject.baikiruto.core.item.Meta
 import org.tabooproject.baikiruto.core.item.event.ItemReleaseDisplayEvent
 import org.tabooproject.baikiruto.core.item.event.ItemReleaseEvent
 import org.tabooproject.baikiruto.core.item.event.ItemReleaseFinalEvent
+import org.tabooproject.baikiruto.core.item.event.ItemSelectDisplayEvent
 import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDurabilityFeature
@@ -31,12 +32,23 @@ class DefaultItemStream(
 ) : ItemStream {
 
     private val runtimeDataBacking = LinkedHashMap(initialRuntimeData)
+    private val lockedRuntimePaths = linkedSetOf<String>()
+    private val lockedDisplayFields = linkedSetOf<String>()
+    private val lockedIconMaterial = backingItem.type
     private val metaHistoryBacking = CopyOnWriteArrayList<String>()
     private val signalBacking = ConcurrentHashMap.newKeySet<ItemSignal>()
     private var locked = false
     private var invocationContext: Map<String, Any?> = emptyMap()
 
     init {
+        mergeLockedRuntimePaths(runtimeDataBacking[LOCKED_DATA_PATHS_KEY])
+        if (lockedRuntimePaths.isNotEmpty()) {
+            runtimeDataBacking[LOCKED_DATA_PATHS_KEY] = lockedRuntimePaths.toList()
+        }
+        mergeLockedDisplayFields(runtimeDataBacking[LOCKED_DISPLAY_FIELDS_KEY])
+        if (lockedDisplayFields.isNotEmpty()) {
+            runtimeDataBacking[LOCKED_DISPLAY_FIELDS_KEY] = lockedDisplayFields.toList()
+        }
         metaHistoryBacking += initialMetaHistory
     }
 
@@ -59,19 +71,25 @@ class DefaultItemStream(
 
     override fun setDisplayName(name: String?): ItemStream {
         ensureUnlocked("setDisplayName")
+        if (isDisplayFieldLocked("name")) {
+            return this
+        }
         VersionAdapterService.applyDisplayName(backingItem, name)
         return this
     }
 
     override fun setLore(lines: List<String>): ItemStream {
         ensureUnlocked("setLore")
+        if (isDisplayFieldLocked("lore")) {
+            return this
+        }
         VersionAdapterService.applyLore(backingItem, lines)
         return this
     }
 
     override fun setRuntimeData(key: String, value: Any?): ItemStream {
         ensureUnlocked("setRuntimeData")
-        runtimeDataBacking[key] = value
+        putRuntimeData(key, value)
         return this
     }
 
@@ -121,8 +139,12 @@ class DefaultItemStream(
             put("ctx", LinkedHashMap(runtimeDataBacking))
         }
         val rebuilt = item.build(context)
-        runtimeDataBacking.forEach { (key, value) ->
-            rebuilt.setRuntimeData(key, value)
+        if (rebuilt is DefaultItemStream) {
+            rebuilt.copyRuntimeDataFrom(runtimeDataBacking)
+        } else {
+            runtimeDataBacking.forEach { (key, value) ->
+                rebuilt.setRuntimeData(key, value)
+            }
         }
         signalBacking.forEach { signal ->
             rebuilt.markSignal(signal)
@@ -170,6 +192,7 @@ class DefaultItemStream(
             return backingItem.clone()
         }
         dispatchReleaseScripts(ItemScriptTrigger.RELEASE, context)
+        applySelectedDisplay(player, context["event"], contextMutable)
         applyI18nDisplay()
         if (!postReleaseEvent(ItemReleaseDisplayEvent(this, player, context["event"], contextMutable))) {
             return backingItem.clone()
@@ -207,19 +230,25 @@ class DefaultItemStream(
         ensureUnlocked("syncScriptResult")
         when (result) {
             is ItemStack -> {
+                val previous = backingItem.clone()
                 if (providedItemRef != null && providedItemBaseline != null && result === providedItemRef && result == providedItemBaseline) {
                     return
                 }
                 backingItem = result.clone()
+                enforceDisplayLocks(previous)
             }
             is ItemStream -> {
+                val previous = backingItem.clone()
                 backingItem = result.snapshot()
-                result.runtimeData.forEach { (key, value) -> runtimeDataBacking[key] = value }
+                enforceDisplayLocks(previous)
+                result.runtimeData.forEach { (key, value) ->
+                    putRuntimeData(key, value)
+                }
             }
             is Map<*, *> -> {
                 result.forEach { (key, value) ->
                     val normalized = key?.toString()?.takeIf { it.isNotBlank() } ?: return@forEach
-                    runtimeDataBacking[normalized] = value
+                    putRuntimeData(normalized, value)
                 }
             }
         }
@@ -254,6 +283,54 @@ class DefaultItemStream(
         }
     }
 
+    private fun applySelectedDisplay(
+        player: Player?,
+        source: Any?,
+        context: MutableMap<String, Any?>
+    ) {
+        val api = runCatching { Baikiruto.api() }.getOrNull() ?: return
+        val manager = api.getItemManager()
+        val item = api.getItem(itemId)
+        val preferredDisplayId = (runtimeDataBacking["display-id"] as? String)
+            ?: item?.displayId
+        val initialDisplay = preferredDisplayId?.let(manager::getDisplay)
+        val event = ItemSelectDisplayEvent(
+            stream = this,
+            player = player,
+            source = source,
+            context = context,
+            displayId = preferredDisplayId,
+            display = initialDisplay
+        )
+        api.getItemEventBus().post(event)
+        val selectedDisplay = event.display
+            ?: event.displayId?.let(manager::getDisplay)
+            ?: initialDisplay
+            ?: return
+        putRuntimeData("display-id", selectedDisplay.id, ignorePathLock = true)
+        if (!isDisplayFieldLocked("name")) {
+            selectedDisplay.resolveDisplayName()?.let { displayName ->
+                VersionAdapterService.applyDisplayName(backingItem, displayName)
+            }
+            if (selectedDisplay.name.isNotEmpty()) {
+                putRuntimeData("name", LinkedHashMap(selectedDisplay.name), ignorePathLock = true)
+            }
+        }
+        if (!isDisplayFieldLocked("lore")) {
+            val lore = selectedDisplay.resolveLore()
+            if (lore.isNotEmpty()) {
+                VersionAdapterService.applyLore(backingItem, lore)
+            }
+            if (selectedDisplay.lore.isNotEmpty()) {
+                putRuntimeData(
+                    "lore",
+                    selectedDisplay.lore.mapValues { (_, value) -> value.toList() },
+                    ignorePathLock = true
+                )
+            }
+        }
+    }
+
     private fun buildInvocationContext(): Map<String, Any?> {
         return LinkedHashMap<String, Any?>().apply {
             putAll(invocationContext)
@@ -267,7 +344,7 @@ class DefaultItemStream(
         val itemMeta = backingItem.itemMeta ?: return
         val context = runtimeTemplateContext()
         val displayName = itemMeta.displayName
-        if (!displayName.isNullOrBlank()) {
+        if (!isDisplayFieldLocked("name") && !displayName.isNullOrBlank()) {
             itemMeta.setDisplayName(
                 LegacyTextColorizer.colorize(
                     renderNameTemplate(displayName, context)
@@ -275,7 +352,7 @@ class DefaultItemStream(
             )
         }
         val lore = itemMeta.lore
-        if (!lore.isNullOrEmpty()) {
+        if (!isDisplayFieldLocked("lore") && !lore.isNullOrEmpty()) {
             itemMeta.lore = LegacyTextColorizer.colorize(
                 renderLoreTemplates(lore, context)
             ).toMutableList()
@@ -289,7 +366,7 @@ class DefaultItemStream(
         }
         val itemMeta = backingItem.itemMeta ?: return
         val displayName = itemMeta.displayName
-        if (!displayName.isNullOrBlank()) {
+        if (!isDisplayFieldLocked("name") && !displayName.isNullOrBlank()) {
             itemMeta.setDisplayName(
                 LegacyTextColorizer.colorize(
                     displayName.replacePlaceholder(player)
@@ -297,7 +374,7 @@ class DefaultItemStream(
             )
         }
         val lore = itemMeta.lore
-        if (!lore.isNullOrEmpty()) {
+        if (!isDisplayFieldLocked("lore") && !lore.isNullOrEmpty()) {
             itemMeta.lore = LegacyTextColorizer.colorize(
                 lore.replacePlaceholder(player)
             ).toMutableList()
@@ -338,6 +415,12 @@ class DefaultItemStream(
             }
         }
         runtimeDataBacking.forEach { (key, value) ->
+            if (key == LOCKED_DATA_PATHS_KEY) {
+                return@forEach
+            }
+            if (key == LOCKED_DISPLAY_FIELDS_KEY) {
+                return@forEach
+            }
             collect(key, value)
         }
         return DisplayTemplateContext(
@@ -527,6 +610,8 @@ class DefaultItemStream(
 
     companion object {
 
+        private const val LOCKED_DATA_PATHS_KEY = "__locked_data_paths__"
+        private const val LOCKED_DISPLAY_FIELDS_KEY = "__locked_display_fields__"
         private val TOKEN_PATTERN = Regex("\\{([^{}]+)}|%([^%]+)%")
         private val ANGLE_TOKEN = Regex("<([^<>]+)>")
     }
@@ -538,5 +623,84 @@ class DefaultItemStream(
 
     private fun ensureUnlocked(action: String) {
         check(!locked) { "ItemStream[$itemId] is locked, cannot invoke $action." }
+    }
+
+    private fun copyRuntimeDataFrom(source: Map<String, Any?>) {
+        source.forEach { (key, value) ->
+            putRuntimeData(key, value, ignorePathLock = true)
+        }
+    }
+
+    private fun putRuntimeData(key: String, value: Any?, ignorePathLock: Boolean = false): Boolean {
+        val normalizedKey = key.trim().takeIf { it.isNotEmpty() } ?: return false
+        if (normalizedKey == LOCKED_DATA_PATHS_KEY) {
+            mergeLockedRuntimePaths(value)
+            runtimeDataBacking[LOCKED_DATA_PATHS_KEY] = lockedRuntimePaths.toList()
+            return true
+        }
+        if (normalizedKey == LOCKED_DISPLAY_FIELDS_KEY) {
+            mergeLockedDisplayFields(value)
+            runtimeDataBacking[LOCKED_DISPLAY_FIELDS_KEY] = lockedDisplayFields.toList()
+            return true
+        }
+        if (!ignorePathLock && isRuntimePathLocked(normalizedKey)) {
+            return false
+        }
+        runtimeDataBacking[normalizedKey] = value
+        return true
+    }
+
+    private fun isRuntimePathLocked(key: String): Boolean {
+        return lockedRuntimePaths.any { path ->
+            key == path || key.startsWith("$path.")
+        }
+    }
+
+    private fun mergeLockedRuntimePaths(raw: Any?) {
+        when (raw) {
+            is String -> raw.split(',', '\n')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .forEach(lockedRuntimePaths::add)
+            is Iterable<*> -> raw.forEach { entry ->
+                val path = entry?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+                lockedRuntimePaths += path
+            }
+        }
+    }
+
+    private fun mergeLockedDisplayFields(raw: Any?) {
+        when (raw) {
+            is String -> raw.split(',', '\n')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .forEach(lockedDisplayFields::add)
+            is Iterable<*> -> raw.forEach { entry ->
+                val field = entry?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+                lockedDisplayFields += field
+            }
+        }
+    }
+
+    private fun isDisplayFieldLocked(field: String): Boolean {
+        return field in lockedDisplayFields
+    }
+
+    private fun enforceDisplayLocks(previous: ItemStack) {
+        if (isDisplayFieldLocked("icon") && backingItem.type != lockedIconMaterial) {
+            backingItem.type = lockedIconMaterial
+        }
+        if (!isDisplayFieldLocked("name") && !isDisplayFieldLocked("lore")) {
+            return
+        }
+        val previousMeta = previous.itemMeta ?: return
+        val currentMeta = backingItem.itemMeta ?: return
+        if (isDisplayFieldLocked("name")) {
+            currentMeta.setDisplayName(previousMeta.displayName)
+        }
+        if (isDisplayFieldLocked("lore")) {
+            currentMeta.lore = previousMeta.lore?.toMutableList()
+        }
+        backingItem.itemMeta = currentMeta
     }
 }
