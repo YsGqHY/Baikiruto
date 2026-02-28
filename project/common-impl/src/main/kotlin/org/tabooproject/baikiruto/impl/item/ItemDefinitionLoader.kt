@@ -19,6 +19,7 @@ import taboolib.common.platform.function.info
 import taboolib.common.platform.function.releaseResourceFile
 import taboolib.common.platform.function.warning
 import taboolib.library.configuration.ConfigurationSection
+import taboolib.library.xseries.XMaterial
 import taboolib.module.configuration.Configuration
 import java.io.File
 import java.util.Locale
@@ -185,13 +186,16 @@ object ItemDefinitionLoader {
     }
 
     private fun parseNameMap(section: ConfigurationSection): Map<String, String> {
-        val nameSection = section.getConfigurationSection("name")
+        val nameSection = section.getConfigurationSection("name!!")
+            ?: section.getConfigurationSection("name")
         if (nameSection != null) {
             return nameSection.getKeys(false).associateWith { key ->
                 nameSection.getString(key).orEmpty()
             }
         }
-        val direct = section.getString("display-name")
+        val direct = section.getString("display-name!!")
+            ?: section.getString("name!!")
+            ?: section.getString("display-name")
             ?: section.getString("name")
         if (!direct.isNullOrBlank()) {
             return mapOf("item_name" to direct)
@@ -200,20 +204,29 @@ object ItemDefinitionLoader {
     }
 
     private fun parseLoreMap(section: ConfigurationSection): Map<String, List<String>> {
-        val loreSection = section.getConfigurationSection("lore")
+        val loreSection = section.getConfigurationSection("lore!!")
+            ?: section.getConfigurationSection("lore")
         if (loreSection != null) {
-            return loreSection.getKeys(false).associateWith { key ->
+            val autoWrap = loreSection.getInt("~autowrap")
+            return loreSection.getKeys(false)
+                .filterNot { it == "~autowrap" }
+                .associateWith { key ->
                 val value = loreSection.get(key)
-                when (value) {
+                val lines = when (value) {
                     is String -> value.split('\n')
                     is List<*> -> value.filterIsInstance<String>().flatMap { it.split('\n') }
                     else -> emptyList()
                 }
+                applyAutoWrap(lines, autoWrap)
             }
         }
-        val direct = section.getStringList("lore")
+        val direct = section.getStringList("lore!!").ifEmpty { section.getStringList("lore") }
         if (direct.isNotEmpty()) {
             return mapOf("item_description" to direct)
+        }
+        val directString = section.getString("lore!!") ?: section.getString("lore")
+        if (!directString.isNullOrBlank()) {
+            return mapOf("item_description" to directString.split('\n'))
         }
         return emptyMap()
     }
@@ -226,7 +239,10 @@ object ItemDefinitionLoader {
         val parentId = id.substringBeforeLast('/', "").takeIf { it.isNotBlank() }
         val path = groupSection?.getString("path")?.takeIf { it.isNotBlank() } ?: pathWithoutExt
         val priority = groupSection?.getInt("priority", 0) ?: 0
-        val icon = groupSection?.getString("icon") ?: groupSection?.getString("display")
+        val icon = groupSection?.getString("icon!!")
+            ?: groupSection?.getString("icon")
+            ?: groupSection?.getString("display!!")
+            ?: groupSection?.getString("display")
         return ItemGroup(id = id, path = path, parentId = parentId, priority = priority, icon = icon)
     }
 
@@ -362,20 +378,30 @@ object ItemDefinitionLoader {
             return null
         }
         val (modelIds, models) = resolveModels(manager, parseModelRefs(section))
-        val displayId = section.getString("display")?.takeIf { it.isNotBlank() }
-            ?: models.firstNotNullOfOrNull { stringValue(it.data["display"]) }
+        val displayId = section.getString("display!!")?.takeIf { it.isNotBlank() }
+            ?: section.getString("display")?.takeIf { it.isNotBlank() }
+            ?: models.firstNotNullOfOrNull { model ->
+                stringValue(model.data["display!!"])
+                    ?: stringValue(model.data["display"])
+            }
         val display = displayId?.let(manager::getDisplay)
         val itemId = section.getString("id")?.takeIf { it.isNotBlank() } ?: itemKey
         val materialName = section.getString("material")
+            ?: section.getString("material!!")
             ?: section.getString("icon")
+            ?: section.getString("icon!!")
             ?: section.getString("type")
+            ?: section.getString("type!!")
             ?: models.firstNotNullOfOrNull { model ->
                 stringValue(model.data["material"])
+                    ?: stringValue(model.data["material!!"])
                     ?: stringValue(model.data["icon"])
+                    ?: stringValue(model.data["icon!!"])
                     ?: stringValue(model.data["type"])
+                    ?: stringValue(model.data["type!!"])
             }
             ?: "STONE"
-        val material = Material.matchMaterial(materialName) ?: Material.STONE
+        val material = resolveMaterial(materialName)
         val template = ItemStack(material)
         val modelDefaults = mergeModelRuntimeData(models)
         val itemComponents = parseComponents(section.getConfigurationSection("components"))
@@ -386,8 +412,11 @@ object ItemDefinitionLoader {
             )
         } ?: emptyMap()
         val itemDisplayRuntime = parseDisplayAsRuntimeData(
-            section.get("display-name") ?: section.get("name"),
-            section.get("lore")
+            section.get("display-name!!")
+                ?: section.get("display-name")
+                ?: section.get("name!!")
+                ?: section.get("name"),
+            section.get("lore!!") ?: section.get("lore")
         )
         val displayName = parseDisplayName(section)
             ?: display?.resolveDisplayName()
@@ -543,10 +572,14 @@ object ItemDefinitionLoader {
         }
         section.getKeys(false).forEach { key ->
             val child = section.getConfigurationSection(key)
-            target[key] = when {
-                child != null -> child.getString("script")
-                section.isList(key) -> section.getStringList(key).joinToString("\n")
-                else -> section.getString(key)
+            target[key] = if (child != null) {
+                parseScriptValue(
+                    child.get("script")
+                        ?: child.get("source")
+                        ?: child.get("content")
+                )
+            } else {
+                parseScriptValue(section.get(key))
             }
         }
     }
@@ -557,12 +590,7 @@ object ItemDefinitionLoader {
         }
         source.forEach { (key, rawValue) ->
             val name = key?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
-            val script = when (rawValue) {
-                is String -> rawValue
-                is Iterable<*> -> rawValue.mapNotNull { it?.toString() }.joinToString("\n")
-                is Map<*, *> -> rawValue["script"]?.toString()
-                else -> rawValue?.toString()
-            }
+            val script = parseScriptValue(rawValue)
             target[name] = script
         }
     }
@@ -653,7 +681,7 @@ object ItemDefinitionLoader {
         val merged = linkedMapOf<String, Any?>()
         models.forEach { model ->
             val data = model.data
-            merged.putAll(anyToMap(data["data"]))
+            merged.putAll(normalizeLockedMap(anyToMap(data["data"])))
             merged.putAll(parseDataMapper(anyToMap(data["data-mapper"])))
             merged.putAll(anyToMap(data["effects"]))
             merged.putAll(parseMetaEffects(anyToMap(data["meta"])))
@@ -664,7 +692,10 @@ object ItemDefinitionLoader {
                     merged["display"] = it
                 }
             }
-            parseDisplayAsRuntimeData(data["name"], data["lore"]).forEach { (key, value) ->
+            parseDisplayAsRuntimeData(
+                data["name!!"] ?: data["name"],
+                data["lore!!"] ?: data["lore"]
+            ).forEach { (key, value) ->
                 merged[key] = value
             }
         }
@@ -701,13 +732,23 @@ object ItemDefinitionLoader {
 
     private fun isSingleItem(section: ConfigurationSection): Boolean {
         return !section.getString("id").isNullOrBlank() ||
+            !section.getString("display!!").isNullOrBlank() ||
+            !section.getString("display").isNullOrBlank() ||
             !section.getString("material").isNullOrBlank() ||
+            !section.getString("material!!").isNullOrBlank() ||
             !section.getString("icon").isNullOrBlank() ||
+            !section.getString("icon!!").isNullOrBlank() ||
             !section.getString("type").isNullOrBlank() ||
+            !section.getString("type!!").isNullOrBlank() ||
             !section.getString("display-name").isNullOrBlank() ||
+            !section.getString("display-name!!").isNullOrBlank() ||
             !section.getString("name").isNullOrBlank() ||
+            !section.getString("name!!").isNullOrBlank() ||
             section.getConfigurationSection("name") != null ||
+            section.getConfigurationSection("name!!") != null ||
             section.getConfigurationSection("lore") != null ||
+            section.getConfigurationSection("lore!!") != null ||
+            !section.getString("lore!!").isNullOrBlank() ||
             section.getConfigurationSection("scripts") != null ||
             section.getConfigurationSection("event") != null ||
             section.getConfigurationSection("metas") != null ||
@@ -721,11 +762,39 @@ object ItemDefinitionLoader {
     }
 
     private fun parseData(section: ConfigurationSection?): Map<String, Any?> {
-        return if (section == null) emptyMap() else sectionToMap(section)
+        return if (section == null) {
+            emptyMap()
+        } else {
+            normalizeLockedMap(sectionToMap(section))
+        }
     }
 
     private fun parseEffects(section: ConfigurationSection?): Map<String, Any?> {
         return if (section == null) emptyMap() else sectionToMap(section)
+    }
+
+    private fun normalizeLockedMap(source: Map<String, Any?>): Map<String, Any?> {
+        if (source.isEmpty()) {
+            return emptyMap()
+        }
+        val normalized = linkedMapOf<String, Any?>()
+        source.forEach { (key, value) ->
+            val targetKey = key.trim()
+                .removeSuffix("!!")
+                .takeIf { it.isNotEmpty() }
+                ?: return@forEach
+            normalized[targetKey] = normalizeLockedValue(value)
+        }
+        return normalized
+    }
+
+    private fun normalizeLockedValue(value: Any?): Any? {
+        return when (value) {
+            is Map<*, *> -> normalizeLockedMap(anyToMap(value))
+            is ConfigurationSection -> normalizeLockedMap(sectionToMap(value))
+            is Iterable<*> -> value.map { entry -> normalizeLockedValue(entry) }
+            else -> value
+        }
     }
 
     private fun parseDataMapper(section: ConfigurationSection?): Map<String, Any?> {
@@ -735,11 +804,7 @@ object ItemDefinitionLoader {
         val mappings = linkedMapOf<String, String>()
         section.getKeys(false).forEach { key ->
             val raw = section.get(key)
-            val script = when (raw) {
-                is String -> raw
-                is Iterable<*> -> raw.mapNotNull { it?.toString() }.joinToString("\n")
-                else -> raw?.toString()
-            }?.trim()
+            val script = parseScriptValue(raw)
             if (!script.isNullOrBlank()) {
                 mappings[key] = script
             }
@@ -757,12 +822,7 @@ object ItemDefinitionLoader {
         }
         val mappings = linkedMapOf<String, String>()
         section.forEach { (key, value) ->
-            val script = when (value) {
-                is String -> value
-                is Iterable<*> -> value.mapNotNull { it?.toString() }.joinToString("\n")
-                is Map<*, *> -> value["script"]?.toString()
-                else -> value?.toString()
-            }?.trim()
+            val script = parseScriptValue(value)
             if (!script.isNullOrBlank()) {
                 mappings[key] = script
             }
@@ -1547,11 +1607,16 @@ object ItemDefinitionLoader {
     }
 
     private fun parseDisplayName(section: ConfigurationSection): String? {
-        val direct = section.getString("display-name") ?: section.getString("name")
+        val direct = section.getString("display-name!!")
+            ?: section.getString("name!!")
+            ?: section.getString("display-name")
+            ?: section.getString("name")
         if (!direct.isNullOrBlank()) {
             return direct
         }
-        val nameSection = section.getConfigurationSection("name") ?: return null
+        val nameSection = section.getConfigurationSection("name!!")
+            ?: section.getConfigurationSection("name")
+            ?: return null
         return nameSection.getString("item_name")
             ?: nameSection.getKeys(false).firstNotNullOfOrNull { key ->
                 nameSection.getString(key)
@@ -1559,24 +1624,58 @@ object ItemDefinitionLoader {
     }
 
     private fun parseLore(section: ConfigurationSection): List<String> {
-        val directLore = section.getStringList("lore")
+        val directLore = section.getStringList("lore!!")
+            .ifEmpty { section.getStringList("lore") }
         if (directLore.isNotEmpty()) {
             return directLore
         }
-        val loreString = section.getString("lore")
+        val loreString = section.getString("lore!!") ?: section.getString("lore")
         if (!loreString.isNullOrBlank()) {
             return loreString.split('\n')
         }
-        val loreSection = section.getConfigurationSection("lore") ?: return emptyList()
+        val loreSection = section.getConfigurationSection("lore!!")
+            ?: section.getConfigurationSection("lore")
+            ?: return emptyList()
+        val autoWrap = loreSection.getInt("~autowrap")
         val lore = mutableListOf<String>()
         loreSection.getKeys(false).forEach { key ->
+            if (key == "~autowrap") {
+                return@forEach
+            }
             val value = loreSection.get(key)
             when (value) {
-                is String -> lore += value.split('\n')
-                is List<*> -> lore += value.filterIsInstance<String>().flatMap { it.split('\n') }
+                is String -> lore += applyAutoWrap(value.split('\n'), autoWrap)
+                is List<*> -> lore += applyAutoWrap(value.filterIsInstance<String>().flatMap { it.split('\n') }, autoWrap)
             }
         }
         return lore
+    }
+
+    private fun applyAutoWrap(lines: List<String>, size: Int): List<String> {
+        if (size <= 0) {
+            return lines
+        }
+        return lines.flatMap { line -> wrapLine(line, size) }
+    }
+
+    private fun wrapLine(line: String, size: Int): List<String> {
+        if (line.length <= size) {
+            return listOf(line)
+        }
+        val result = arrayListOf<String>()
+        var remaining = line
+        while (remaining.length > size) {
+            val chunk = remaining.substring(0, size)
+            val colorIndex = chunk.lastIndexOf('§')
+            result += chunk
+            remaining = if (colorIndex != -1 && colorIndex + 2 <= chunk.length) {
+                chunk.substring(colorIndex, colorIndex + 2) + remaining.substring(size)
+            } else {
+                remaining.substring(size)
+            }
+        }
+        result += remaining
+        return result
     }
 
     private fun sectionToMap(section: ConfigurationSection): Map<String, Any?> {
@@ -1950,6 +2049,14 @@ object ItemDefinitionLoader {
         }
     }
 
+    private fun resolveMaterial(source: String?): Material {
+        val materialName = source?.trim()?.takeIf { it.isNotEmpty() } ?: return Material.STONE
+        return Material.matchMaterial(materialName)
+            ?: Material.matchMaterial(materialName.uppercase(Locale.ENGLISH))
+            ?: runCatching { XMaterial.matchXMaterial(materialName).orElse(null)?.parseMaterial() }.getOrNull()
+            ?: Material.STONE
+    }
+
     private fun parseHooks(
         vararg sections: taboolib.library.configuration.ConfigurationSection?,
         i18nSection: taboolib.library.configuration.ConfigurationSection? = null
@@ -1959,14 +2066,38 @@ object ItemDefinitionLoader {
         sections.filterNotNull().forEach { section ->
             section.getKeys(false).forEach { key ->
                 val child = section.getConfigurationSection(key)
-                scripts[key] = when {
-                    child != null -> child.getString("script")
-                    section.isList(key) -> section.getStringList(key).joinToString("\n")
-                    else -> section.getString(key)
+                scripts[key] = if (child != null) {
+                    parseScriptValue(
+                        child.get("script")
+                            ?: child.get("source")
+                            ?: child.get("content")
+                    )
+                } else {
+                    parseScriptValue(section.get(key))
                 }
             }
         }
         collectI18nScriptEntriesFromSection(i18nSection, localizedScripts)
         return buildScriptHooks(scripts, localizedScripts)
+    }
+
+    private fun parseScriptValue(source: Any?): String? {
+        val value = when (source) {
+            null -> null
+            is String -> source
+            is Iterable<*> -> source.mapNotNull { it?.toString() }.joinToString("\n")
+            is Map<*, *> -> parseScriptValue(
+                source["script"]
+                    ?: source["source"]
+                    ?: source["content"]
+            )
+            is ConfigurationSection -> parseScriptValue(
+                source.get("script")
+                    ?: source.get("source")
+                    ?: source.get("content")
+            )
+            else -> source.toString()
+        }
+        return value?.trim()?.takeIf { it.isNotEmpty() }
     }
 }
