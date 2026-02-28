@@ -28,7 +28,6 @@ object ItemDefinitionLoader {
 
     private const val DEFAULT_ITEM_FILE = "items/example.yml"
     private const val DEFAULT_DISPLAY_FILE = "display/def.yml"
-    private val JSON_TEXT_PATTERN = Regex("\"text\"\\s*:\\s*\"([^\"]+)\"")
     private val loadedItemIds = CopyOnWriteArraySet<String>()
     private data class ParsedFile(val file: File, val conf: Configuration)
 
@@ -625,34 +624,34 @@ object ItemDefinitionLoader {
         }
         val effects = linkedMapOf<String, Any?>()
         section.forEach { (rawComponentId, rawValue) ->
-            when (normalizeComponentId(rawComponentId)) {
-                "minecraft:item_model", "item_model", "item-model" -> {
+            when (ComponentConfigParser.normalizeComponentKey(rawComponentId)) {
+                "item_model" -> {
                     stringValue(rawValue)?.let { effects["item-model"] = it }
                 }
-                "minecraft:custom_model_data", "custom_model_data", "custom-model-data" -> {
+                "custom_model_data" -> {
                     parseCustomModelData(rawValue)?.let { effects["custom-model-data"] = it }
                 }
-                "minecraft:custom_name", "custom_name", "custom-name", "name" -> {
+                "custom_name", "name" -> {
                     parseComponentDisplayName(rawValue)?.let {
                         effects["name"] = mapOf("item_name" to it)
                     }
                 }
-                "minecraft:lore" -> {
+                "lore" -> {
                     parseComponentLore(rawValue).takeIf { it.isNotEmpty() }?.let {
                         effects["lore"] = mapOf("item_description" to it)
                     }
                 }
-                "minecraft:enchantments", "enchantments", "enchantment" -> {
+                "enchantments", "enchantment" -> {
                     parseComponentEnchantments(rawValue).forEach { (key, value) ->
                         effects[key] = value
                     }
                 }
-                "minecraft:attribute_modifiers", "attribute_modifiers", "attribute-modifiers" -> {
+                "attribute_modifiers" -> {
                     parseComponentAttributes(rawValue).takeIf { it.isNotEmpty() }?.let {
                         effects["attributes"] = it
                     }
                 }
-                "minecraft:unbreakable", "unbreakable" -> {
+                "unbreakable" -> {
                     val value = when (rawValue) {
                         is Map<*, *> -> true
                         else -> asBoolean(rawValue)
@@ -661,34 +660,34 @@ object ItemDefinitionLoader {
                         effects["unbreakable"] = value
                     }
                 }
-                "minecraft:damage", "damage" -> {
+                "damage" -> {
                     numberValue(rawValue)?.toInt()?.let { effects["damage"] = it }
                 }
-                "minecraft:max_damage", "max_damage", "max-damage" -> {
+                "max_damage" -> {
                     numberValue(rawValue)?.toInt()?.let { effects["durability"] = it }
                 }
-                "minecraft:can_break", "can_break", "can-break" -> {
+                "can_break" -> {
                     val blocks = parseComponentBlocks(rawValue)
                     if (blocks.isNotEmpty()) {
                         effects["can-destroy"] = blocks
                     }
                 }
-                "minecraft:can_place_on", "can_place_on", "can-place-on" -> {
+                "can_place_on" -> {
                     val blocks = parseComponentBlocks(rawValue)
                     if (blocks.isNotEmpty()) {
                         effects["can-place-on"] = blocks
                     }
                 }
-                "minecraft:tooltip_style", "tooltip_style", "tooltip-style" -> {
+                "tooltip_style" -> {
                     stringValue(rawValue)?.let { effects["tooltip-style"] = it }
                 }
-                "minecraft:rarity", "rarity" -> {
+                "rarity" -> {
                     stringValue(rawValue)?.let { effects["rarity"] = it }
                 }
-                "minecraft:glider", "glider" -> {
+                "glider" -> {
                     asBoolean(rawValue)?.let { effects["glider"] = it }
                 }
-                "minecraft:use_cooldown", "use_cooldown", "use-cooldown" -> {
+                "use_cooldown" -> {
                     val cooldown = anyToMap(rawValue)
                     val seconds = numberValue(cooldown["seconds"])?.toDouble()
                     if (seconds != null && seconds > 0.0) {
@@ -699,32 +698,32 @@ object ItemDefinitionLoader {
                         effects["use-cooldown-group"] = it
                     }
                 }
-                "minecraft:use_remainder", "use_remainder", "use-remainder" -> {
+                "use_remainder" -> {
                     parseUseRemainder(rawValue).forEach { (key, value) ->
                         effects[key] = value
                     }
                 }
-                "minecraft:equippable", "equippable" -> {
+                "equippable" -> {
                     parseEquippable(rawValue).forEach { (key, value) ->
                         effects[key] = value
                     }
                 }
-                "minecraft:damage_resistant", "damage_resistant", "damage-resistant" -> {
+                "damage_resistant" -> {
                     parseDamageResistant(rawValue).forEach { (key, value) ->
                         effects[key] = value
                     }
                 }
-                "minecraft:death_protection", "death_protection", "death-protection" -> {
+                "death_protection" -> {
                     parseDeathProtection(rawValue).forEach { (key, value) ->
                         effects[key] = value
                     }
                 }
-                "minecraft:potion_contents", "potion_contents", "potion-contents" -> {
+                "potion_contents" -> {
                     parsePotionContents(rawValue).forEach { (key, value) ->
                         effects[key] = value
                     }
                 }
-                "minecraft:custom_data", "custom_data", "custom-data" -> {
+                "custom_data" -> {
                     val customData = anyToMap(rawValue)
                     if (customData.isNotEmpty()) {
                         val existing = anyToMap(effects["native"]).toMutableMap()
@@ -1494,10 +1493,6 @@ object ItemDefinitionLoader {
         }
     }
 
-    private fun normalizeComponentId(raw: String): String {
-        return raw.trim().lowercase(Locale.ENGLISH)
-    }
-
     private fun parseCustomModelData(source: Any?): Int? {
         numberValue(source)?.toInt()?.let { return it }
         val map = anyToMap(source)
@@ -1649,29 +1644,11 @@ object ItemDefinitionLoader {
     }
 
     private fun parseComponentDisplayName(source: Any?): String? {
-        return when (source) {
-            is String -> source.trim().takeIf { it.isNotEmpty() }?.let(::extractJsonText)
-            is Map<*, *> -> {
-                val map = anyToMap(source)
-                stringValue(map["text"])?.let(::extractJsonText)
-                    ?: stringValue(map["item_name"])?.let(::extractJsonText)
-            }
-            else -> null
-        }
+        return ComponentConfigParser.parseText(source)
     }
 
     private fun parseComponentLore(source: Any?): List<String> {
-        return when (source) {
-            is String -> listOf(extractJsonText(source))
-            is Iterable<*> -> source.mapNotNull { value ->
-                when (value) {
-                    is String -> extractJsonText(value)
-                    is Map<*, *> -> parseComponentDisplayName(value)
-                    else -> null
-                }
-            }
-            else -> emptyList()
-        }
+        return ComponentConfigParser.parseTextList(source)
     }
 
     private fun parseComponentEnchantments(source: Any?): Map<String, Any?> {
@@ -1787,12 +1764,6 @@ object ItemDefinitionLoader {
                 mapOf("use-remainder" to id, "use-remainder-amount" to amount.toInt().coerceAtLeast(1))
             }
         }
-    }
-
-    private fun extractJsonText(source: String): String {
-        val raw = source.trim()
-        val textMatch = JSON_TEXT_PATTERN.find(raw)?.groupValues?.getOrNull(1)
-        return textMatch?.trim()?.takeIf { it.isNotEmpty() } ?: raw
     }
 
     private fun parseHooks(vararg sections: taboolib.library.configuration.ConfigurationSection?): ItemScriptHooks {

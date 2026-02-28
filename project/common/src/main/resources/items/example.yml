@@ -178,19 +178,18 @@ items:
         - DIRT
         - GRASS_BLOCK
     components:
-      "minecraft:custom_name": "{\"text\":\"Example All Features\",\"color\":\"gold\",\"italic\":false}"
-      "minecraft:lore":
-        - "{\"text\":\"1.21.11 data component showcase\",\"color\":\"gray\",\"italic\":false}"
-        - "{\"text\":\"Includes script/meta/component pipeline\",\"color\":\"dark_gray\",\"italic\":false}"
-      "minecraft:item_model": "baikiruto:items/all_features_12111"
-      "minecraft:custom_model_data":
-        value: 1211101
-      "minecraft:enchantments":
+      custom_name: "&6Example All Features"
+      lore:
+        - "&71.21.11 data component showcase"
+        - "&8Includes script/meta/component pipeline"
+      item_model: "baikiruto:items/all_features_12111"
+      custom_model_data: 1211101
+      enchantments:
         levels:
-          minecraft:sharpness: 5
-          minecraft:unbreaking: 3
+          sharpness: 5
+          unbreaking: 3
         show_in_tooltip: false
-      "minecraft:attribute_modifiers":
+      attribute_modifiers:
         modifiers:
           - type: "attack_damage"
             amount: 6.0
@@ -200,42 +199,42 @@ items:
             amount: 0.1
             operation: "add_multiplied_total"
             slot: "mainhand"
-      "minecraft:unbreakable":
+      unbreakable:
         show_in_tooltip: false
-      "minecraft:damage": 3
-      "minecraft:max_damage": 240
-      "minecraft:can_break":
+      damage: 3
+      max_damage: 240
+      can_break:
         blocks:
           - STONE
           - DEEPSLATE
-      "minecraft:can_place_on":
+      can_place_on:
         blocks:
           - DIRT
           - GRASS_BLOCK
-      "minecraft:tooltip_style": "baikiruto:tooltip/default"
-      "minecraft:rarity": "epic"
-      "minecraft:glider": false
-      "minecraft:use_cooldown":
+      tooltip_style: "baikiruto:tooltip/default"
+      rarity: "epic"
+      glider: false
+      use_cooldown:
         seconds: 4.0
         cooldown_group: "baikiruto:example_weapon"
-      "minecraft:use_remainder":
+      use_remainder:
         id: "example:remainder"
         amount: 1
-      "minecraft:equippable":
+      equippable:
         slot: "mainhand"
         equip_sound: "entity.player.levelup"
         model: "baikiruto:items/all_features_equipped"
-      "minecraft:damage_resistant":
+      damage_resistant:
         enabled: true
         types:
           - "projectile"
-      "minecraft:death_protection":
+      death_protection:
         enabled: true
         health: 4.0
         consume: false
         types:
           - "void"
-      "minecraft:custom_data":
+      custom_data:
         baikiruto:
           item_id: "example:all_features"
           server: "1.21.11"
@@ -261,27 +260,27 @@ items:
       item_description:
         - "&7Offhand damage resistance and death protection demo"
     components:
-      "minecraft:equippable":
+      equippable:
         slot: "offhand"
-      "minecraft:damage_resistant":
+      damage_resistant:
         enabled: true
         types:
           - "fire"
           - "explosion"
-      "minecraft:death_protection":
+      death_protection:
         enabled: true
         health: 10.0
         consume: true
         types:
           - "all"
-      "minecraft:use_remainder":
+      use_remainder:
         id: "example:remainder"
         amount: 1
-      "minecraft:use_cooldown":
+      use_cooldown:
         seconds: 10.0
         cooldown_group: "baikiruto:guardian_totem"
-      "minecraft:rarity": "rare"
-      "minecraft:custom_data":
+      rarity: "rare"
+      custom_data:
         baikiruto:
           item_id: "example:guardian_totem"
     event:
@@ -312,18 +311,18 @@ items:
       can-place-on:
         - STONE
     components:
-      "minecraft:potion_contents":
-        potion: "minecraft:strong_swiftness"
+      potion_contents:
+        potion: "strong_swiftness"
         custom_color: "55AAFF"
         custom_effects:
-          - id: "minecraft:speed"
+          - id: "speed"
             duration: 300
             amplifier: 1
             ambient: false
             show_particles: true
             show_icon: true
-      "minecraft:use_remainder": "GLASS_BOTTLE"
-      "minecraft:custom_data":
+      use_remainder: "GLASS_BOTTLE"
+      custom_data:
         baikiruto:
           item_id: "example:potion_suite"
     event:
@@ -341,8 +340,8 @@ items:
       skull:
         owner: "Notch"
     components:
-      "minecraft:tooltip_style": "baikiruto:tooltip/default"
-      "minecraft:custom_data":
+      tooltip_style: "baikiruto:tooltip/default"
+      custom_data:
         baikiruto:
           item_id: "example:skull_suite"
 
@@ -365,7 +364,7 @@ items:
       can-destroy:
         - STONE
     components:
-      "minecraft:custom_data":
+      custom_data:
         baikiruto:
           item_id: "example:spawner_suite"
 
@@ -376,14 +375,14 @@ items:
     lore:
       - "&7Glider + equippable + resistance demo"
     components:
-      "minecraft:equippable":
+      equippable:
         slot: "chest"
-      "minecraft:glider": true
-      "minecraft:damage_resistant":
+      glider: true
+      damage_resistant:
         enabled: true
         types:
           - "fall"
-      "minecraft:rarity": "uncommon"
-      "minecraft:custom_data":
+      rarity: "uncommon"
+      custom_data:
         baikiruto:
           item_id: "example:glider_chestplate"
