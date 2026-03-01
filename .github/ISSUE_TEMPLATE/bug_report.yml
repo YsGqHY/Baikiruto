@@ -1,0 +1,196 @@
+name: Bug 反馈
+description: 报告 Baikiruto 的 Bug 或问题
+title: "[Bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢您花时间报告此问题！请填写以下信息以帮助我们诊断问题。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug 描述
+      description: 清晰简洁地描述这个 Bug 是什么
+      placeholder: 描述您遇到的问题...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 复现该问题的详细步骤
+      placeholder: |
+        1. 加载物品配置 '...'
+        2. 执行命令 '...'
+        3. 与物品交互 '...'
+        4. 出现错误
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+      description: 您期望发生什么
+      placeholder: 描述应该发生什么...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 实际发生了什么
+      placeholder: 描述实际发生了什么...
+    validations:
+      required: true
+
+  - type: input
+    id: baikiruto-version
+    attributes:
+      label: Baikiruto 版本
+      description: 您使用的 Baikiruto 版本是什么？
+      placeholder: "例如：1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: minecraft-version
+    attributes:
+      label: Minecraft 版本
+      description: 您的服务器运行的 Minecraft 版本是什么？
+      placeholder: "例如：1.20.4, 1.21.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: server-type
+    attributes:
+      label: 服务端类型
+      description: 您使用的是什么服务端软件？
+      options:
+        - Spigot
+        - Paper
+        - Purpur
+        - Folia
+        - CraftBukkit
+        - 其他（请在附加信息中说明）
+    validations:
+      required: true
+
+  - type: input
+    id: server-version
+    attributes:
+      label: 服务端版本
+      description: 完整的服务端版本（运行 `/version` 命令获取）
+      placeholder: "例如：git-Paper-196 (MC: 1.20.4)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: plugins
+    attributes:
+      label: 已安装插件列表
+      description: 列出服务器上安装的所有插件（运行 `/plugins` 命令）
+      placeholder: |
+        Plugins (15): Baikiruto, Vault, LuckPerms, EssentialsX, ...
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: error-log
+    attributes:
+      label: 错误日志 / 堆栈跟踪
+      description: |
+        粘贴服务器控制台或 latest.log 文件中的完整错误日志或堆栈跟踪。
+        请包含完整的堆栈跟踪，而不仅仅是第一行。
+      placeholder: |
+        [12:34:56 ERROR]: [Baikiruto] ...
+        java.lang.NullPointerException: ...
+            at org.tabooproject.baikiruto...
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: item-config
+    attributes:
+      label: 物品配置（如果适用）
+      description: |
+        如果问题与特定物品相关，请在此处粘贴物品配置。
+        请删除任何敏感信息。
+      placeholder: |
+        example_item:
+          material: DIAMOND_SWORD
+          name: "示例物品"
+          ...
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: script-code
+    attributes:
+      label: 脚本代码（如果适用）
+      description: |
+        如果问题涉及 Fluxon 脚本，请在此处粘贴相关脚本代码。
+      placeholder: |
+        // 您的脚本代码
+        player.sendMessage("Hello")
+      render: kotlin
+    validations:
+      required: false
+
+  - type: input
+    id: java-version
+    attributes:
+      label: Java 版本
+      description: 您使用的 Java 版本是什么？（运行 `java -version`）
+      placeholder: "例如：Java 17.0.8, Java 21.0.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: 操作系统
+      description: 您的服务器运行在什么操作系统上？
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - 其他（请在附加信息中说明）
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 附加信息
+      description: |
+        在此处添加有关问题的任何其他信息。
+        - 这个问题是持续发生还是随机发生？
+        - 在之前的版本中是否正常工作？
+        - 服务器最近有什么变化吗？
+      placeholder: 任何可能有帮助的附加信息...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前检查清单
+      description: 提交前请确认以下内容
+      options:
+        - label: 我已搜索现有 Issues，确保这不是重复问题
+          required: true
+        - label: 我正在使用最新版本的 Baikiruto
+          required: false
+        - label: 我已包含完整的错误日志（如果适用）
+          required: false
+        - label: 我已从配置中删除任何敏感信息
+          required: true
