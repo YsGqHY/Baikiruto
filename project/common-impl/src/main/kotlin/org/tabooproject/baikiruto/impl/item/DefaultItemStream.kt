@@ -215,8 +215,6 @@ class DefaultItemStream(
         applyRuntimeDisplay()
         applyPlaceholderDisplay(player)
         HeadDatabaseHook.patchSkullData(runtimeDataBacking)
-        VersionAdapterService.applyVersionEffects(backingItem, runtimeDataBacking)
-        ItemNativeFeature.apply(backingItem, runtimeDataBacking)
         ItemStreamTransport.sync(
             itemStack = backingItem,
             itemId = itemId,
@@ -224,6 +222,8 @@ class DefaultItemStream(
             metaHistory = metaHistoryBacking.toList(),
             runtimeData = runtimeDataBacking
         )
+        VersionAdapterService.applyVersionEffects(backingItem, runtimeDataBacking)
+        ItemNativeFeature.apply(backingItem, runtimeDataBacking)
         val finalEvent = ItemReleaseFinalEvent(
             stream = this,
             player = player,

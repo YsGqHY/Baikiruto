@@ -1099,9 +1099,10 @@ object ItemDefinitionLoader {
                 "custom_data" -> {
                     val customData = anyToMap(rawValue)
                     if (customData.isNotEmpty()) {
-                        val existing = anyToMap(effects["native"]).toMutableMap()
-                        existing["components.custom_data"] = customData
-                        effects["native"] = existing
+                        customData.forEach { (key, value) ->
+                            val normalizedKey = key?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+                            effects[normalizedKey] = value
+                        }
                     }
                 }
             }
