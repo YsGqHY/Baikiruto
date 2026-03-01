@@ -3,6 +3,7 @@ package org.tabooproject.baikiruto.impl.version
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.ItemMeta
 import org.tabooproject.baikiruto.core.version.BaseItemMetaVersionAdapter
+import org.tabooproject.baikiruto.core.version.DataComponentVersionAdapter
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
 import taboolib.common.platform.function.info
@@ -10,14 +11,28 @@ import taboolib.module.nms.MinecraftVersion
 
 object VersionAdapterService {
 
-    private val runtimeSupport = object : BaseItemMetaVersionAdapter() {
+    private val runtimeSupport: BaseItemMetaVersionAdapter by lazy {
+        if (currentProfile().dataComponentStorage) {
+            object : DataComponentVersionAdapter() {
+                override val supportsCustomModelData: Boolean
+                    get() = currentProfile().supportsCustomModelData && !currentProfile().supportsItemModel
 
-        override val supportsCustomModelData: Boolean
-            get() = currentProfile().supportsCustomModelData && !currentProfile().supportsItemModel
+                override fun applyItemModel(itemMeta: ItemMeta, modelId: String) {
+                    if (currentProfile().supportsItemModel) {
+                        super.applyItemModel(itemMeta, modelId)
+                    }
+                }
+            }
+        } else {
+            object : BaseItemMetaVersionAdapter() {
+                override val supportsCustomModelData: Boolean
+                    get() = currentProfile().supportsCustomModelData && !currentProfile().supportsItemModel
 
-        override fun applyItemModel(itemMeta: ItemMeta, modelId: String) {
-            if (currentProfile().supportsItemModel) {
-                super.applyItemModel(itemMeta, modelId)
+                override fun applyItemModel(itemMeta: ItemMeta, modelId: String) {
+                    if (currentProfile().supportsItemModel) {
+                        super.applyItemModel(itemMeta, modelId)
+                    }
+                }
             }
         }
     }
