@@ -2,6 +2,9 @@ package org.tabooproject.baikiruto.core.version
 
 import org.bukkit.inventory.ItemStack
 import taboolib.common.platform.function.warning
+import taboolib.library.reflex.LazyClass
+import taboolib.library.reflex.Reflex.Companion.invokeMethod
+import taboolib.library.reflex.ReflexClass
 import java.util.Locale
 
 /**
@@ -21,16 +24,10 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         }
 
         val itemMeta = itemStack.itemMeta ?: return
-        val setItemName = itemMeta.javaClass.methods.firstOrNull { method ->
-            method.name == "setItemName" && method.parameterCount == 1
-        }
-
-        if (setItemName != null) {
-            val component = createLegacyTextComponent(displayName)
-            if (component != null && runCatching { setItemName.invoke(itemMeta, component) }.isSuccess) {
-                itemStack.itemMeta = itemMeta
-                return
-            }
+        val component = createLegacyTextComponent(displayName)
+        if (component != null && runCatching { itemMeta.invokeMethod<Any?>("setItemName", component) }.isSuccess) {
+            itemStack.itemMeta = itemMeta
+            return
         }
 
         super.applyDisplayName(itemStack, displayName)
@@ -46,16 +43,10 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         }
 
         val itemMeta = itemStack.itemMeta ?: return
-        val setLore = itemMeta.javaClass.methods.firstOrNull { method ->
-            method.name == "setLore" && method.parameterCount == 1
-        }
-
-        if (setLore != null) {
-            val components = lore.mapNotNull { createLegacyTextComponent(it) }
-            if (components.size == lore.size && runCatching { setLore.invoke(itemMeta, components) }.isSuccess) {
-                itemStack.itemMeta = itemMeta
-                return
-            }
+        val components = lore.mapNotNull { createLegacyTextComponent(it) }
+        if (components.size == lore.size && runCatching { itemMeta.invokeMethod<Any?>("setLore", components) }.isSuccess) {
+            itemStack.itemMeta = itemMeta
+            return
         }
 
         super.applyLore(itemStack, lore)
@@ -486,19 +477,17 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
 
     private fun createLegacyTextComponent(text: String): Any? {
         val serializerClass = runCatching {
-            Class.forName("net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer")
+            LazyClass.of(
+                source = "net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer",
+                dimensions = 0,
+                isPrimitive = false,
+                classFinder = null
+            ).instance
         }.getOrNull() ?: return null
-
-        val legacyAmpersand = serializerClass.methods.firstOrNull { method ->
-            method.name == "legacyAmpersand" && method.parameterCount == 0
-        }?.let { method ->
-            runCatching { method.invoke(null) }.getOrNull()
-        } ?: return null
-
-        val deserialize = serializerClass.methods.firstOrNull { method ->
-            method.name == "deserialize" && method.parameterCount == 1 && method.parameterTypes[0] == String::class.java
-        } ?: return null
-
-        return runCatching { deserialize.invoke(legacyAmpersand, text) }.getOrNull()
+        val serializerReflex = runCatching { ReflexClass.of(serializerClass as Class<*>) }.getOrNull() ?: return null
+        val legacyAmpersand = runCatching {
+            serializerReflex.getMethodSilently("legacyAmpersand", true, true)?.invokeStatic()
+        }.getOrNull() ?: return null
+        return runCatching { legacyAmpersand.invokeMethod<Any>("deserialize", text) }.getOrNull()
     }
 }

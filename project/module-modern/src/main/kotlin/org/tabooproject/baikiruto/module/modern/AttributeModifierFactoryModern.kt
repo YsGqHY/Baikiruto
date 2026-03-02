@@ -3,7 +3,9 @@ package org.tabooproject.baikiruto.module.modern
 import org.bukkit.NamespacedKey
 import org.bukkit.attribute.AttributeModifier
 import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.inventory.EquipmentSlotGroup
 import org.tabooproject.baikiruto.core.item.AttributeModifierFactory
+import taboolib.library.reflex.Reflex.Companion.invokeConstructor
 import java.util.UUID
 
 object AttributeModifierFactoryModern : AttributeModifierFactory {
@@ -21,20 +23,13 @@ object AttributeModifierFactoryModern : AttributeModifierFactory {
                     return AttributeModifier(key, amount, operation, equipmentSlot.group)
                 }
             }
-            val anyGroup = runCatching {
-                val groupClass = Class.forName("org.bukkit.inventory.EquipmentSlotGroup")
-                groupClass.getField("ANY").get(null)
-            }.getOrNull()
-            if (anyGroup != null) {
-                runCatching {
-                    val ctor = AttributeModifier::class.java.constructors.firstOrNull { ctor ->
-                        ctor.parameterCount == 4 &&
-                            ctor.parameterTypes[0] == NamespacedKey::class.java &&
-                            ctor.parameterTypes[1] == java.lang.Double.TYPE &&
-                            ctor.parameterTypes[2] == AttributeModifier.Operation::class.java
-                    } ?: return@runCatching null
-                    return ctor.newInstance(key, amount, operation, anyGroup) as? AttributeModifier
-                }
+            runCatching {
+                return AttributeModifier::class.java.invokeConstructor(
+                    key,
+                    amount,
+                    operation,
+                    EquipmentSlotGroup.ANY
+                )
             }
         }
         if (equipmentSlot != null) {
@@ -42,27 +37,19 @@ object AttributeModifierFactoryModern : AttributeModifierFactory {
                 return AttributeModifier(UUID.randomUUID(), name, amount, operation, equipmentSlot)
             }
             runCatching {
-                val ctor = AttributeModifier::class.java.constructors.firstOrNull { ctor ->
-                    ctor.parameterCount == 4 &&
-                        ctor.parameterTypes[0] == String::class.java &&
-                        ctor.parameterTypes[1] == java.lang.Double.TYPE &&
-                        ctor.parameterTypes[2] == AttributeModifier.Operation::class.java &&
-                        ctor.parameterTypes[3] == EquipmentSlot::class.java
-                } ?: return@runCatching null
-                return ctor.newInstance(name, amount, operation, equipmentSlot) as? AttributeModifier
+                return AttributeModifier::class.java.invokeConstructor(
+                    name,
+                    amount,
+                    operation,
+                    equipmentSlot
+                )
             }
         }
         runCatching {
             return AttributeModifier(UUID.randomUUID(), name, amount, operation)
         }
         runCatching {
-            val ctor = AttributeModifier::class.java.constructors.firstOrNull { ctor ->
-                ctor.parameterCount == 3 &&
-                    ctor.parameterTypes[0] == String::class.java &&
-                    ctor.parameterTypes[1] == java.lang.Double.TYPE &&
-                    ctor.parameterTypes[2] == AttributeModifier.Operation::class.java
-            } ?: return@runCatching null
-            return ctor.newInstance(name, amount, operation) as? AttributeModifier
+            return AttributeModifier::class.java.invokeConstructor(name, amount, operation)
         }
         return null
     }

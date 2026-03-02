@@ -7,6 +7,7 @@ import org.tabooproject.baikiruto.impl.hook.HeadDatabaseHook
 import org.tabooproject.baikiruto.impl.item.ItemDefinitionLoader
 import org.tabooproject.baikiruto.impl.metrics.BaikirutoMetrics
 import org.tabooproject.baikiruto.impl.version.VersionAdapterService
+import taboolib.library.reflex.LazyClass
 
 object BaikirutoDiagnostics {
 
@@ -43,6 +44,8 @@ object BaikirutoDiagnostics {
     }
 
     private fun isClassAvailable(name: String): Boolean {
-        return runCatching { Class.forName(name) }.isSuccess
+        return runCatching {
+            LazyClass.of(source = name, dimensions = 0, isPrimitive = false, classFinder = null).isExist
+        }.getOrDefault(false)
     }
 }

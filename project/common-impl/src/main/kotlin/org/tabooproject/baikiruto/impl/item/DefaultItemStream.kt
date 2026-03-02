@@ -23,6 +23,7 @@ import org.tabooproject.baikiruto.impl.item.feature.ItemUniqueFeature
 import org.tabooproject.baikiruto.impl.hook.HeadDatabaseHook
 import org.tabooproject.baikiruto.impl.version.VersionAdapterService
 import taboolib.platform.compat.replacePlaceholder
+import taboolib.library.reflex.Reflex.Companion.invokeMethod
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -299,14 +300,9 @@ class DefaultItemStream(
     private fun readLegacyDamage(itemStack: ItemStack): Int {
         val itemMeta = itemStack.itemMeta
         if (itemMeta != null) {
-            val method = itemMeta.javaClass.methods.firstOrNull { method ->
-                method.name == "getDamage" && method.parameterCount == 0
-            }
-            if (method != null) {
-                val damage = runCatching { method.invoke(itemMeta) as? Number }.getOrNull()?.toInt()
-                if (damage != null) {
-                    return damage
-                }
+            val damage = runCatching { itemMeta.invokeMethod<Number>("getDamage") }.getOrNull()?.toInt()
+            if (damage != null) {
+                return damage
             }
         }
         return runCatching { itemStack.durability.toInt() }.getOrDefault(0)
@@ -316,10 +312,7 @@ class DefaultItemStream(
         val value = damage.coerceAtLeast(0)
         val itemMeta = itemStack.itemMeta
         if (itemMeta != null) {
-            val method = itemMeta.javaClass.methods.firstOrNull { method ->
-                method.name == "setDamage" && method.parameterCount == 1
-            }
-            if (method != null && runCatching { method.invoke(itemMeta, value) }.isSuccess) {
+            if (runCatching { itemMeta.invokeMethod<Any?>("setDamage", value) }.isSuccess) {
                 itemStack.itemMeta = itemMeta
                 return
             }
@@ -715,8 +708,7 @@ class DefaultItemStream(
     }
 
     private fun resolveLocale(player: Player): String? {
-        val localeMethod = runCatching { player.javaClass.getMethod("getLocale") }.getOrNull() ?: return null
-        return runCatching { localeMethod.invoke(player) as? String }
+        return runCatching { player.locale }
             .getOrNull()
             ?.trim()
             ?.takeIf { it.isNotBlank() }

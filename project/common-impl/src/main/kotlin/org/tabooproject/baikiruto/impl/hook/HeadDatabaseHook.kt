@@ -53,7 +53,10 @@ object HeadDatabaseHook {
     }
 
     private fun isApiPresent(): Boolean {
-        return runCatching { Class.forName("me.arcaniax.hdb.api.HeadDatabaseAPI") }.isSuccess
+        return runCatching {
+            HeadDatabaseAPI()
+            true
+        }.getOrDefault(false)
     }
 
     private fun normalizeHeadDatabaseId(raw: String): String {

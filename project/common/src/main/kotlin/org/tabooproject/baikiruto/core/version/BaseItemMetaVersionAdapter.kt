@@ -12,7 +12,11 @@ import org.bukkit.inventory.ItemFlag
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.ItemMeta
 import org.tabooproject.baikiruto.core.item.Attributes
-import java.lang.reflect.Modifier
+import java.lang.reflect.Constructor
+import java.lang.reflect.Method
+import taboolib.library.reflex.LazyClass
+import taboolib.library.reflex.Reflex.Companion.setProperty
+import taboolib.library.reflex.ReflexClass
 import java.util.Base64
 import java.util.Locale
 import java.util.UUID
@@ -22,17 +26,64 @@ abstract class BaseItemMetaVersionAdapter {
     protected open val supportsCustomModelData: Boolean = true
 
     private val enchantmentsByFieldName: Map<String, Enchantment> by lazy {
-        Enchantment::class.java.fields
-            .asSequence()
-            .filter { field ->
-                Modifier.isStatic(field.modifiers) && Enchantment::class.java.isAssignableFrom(field.type)
+        buildMap {
+            Enchantment.values().forEach { enchantment ->
+                runCatching { put(enchantment.name.uppercase(Locale.ENGLISH), enchantment) }
+                runCatching { put(enchantment.key.key.uppercase(Locale.ENGLISH), enchantment) }
             }
-            .mapNotNull { field ->
-                runCatching { field.get(null) as? Enchantment }.getOrNull()?.let { enchantment ->
-                    field.name.uppercase(Locale.ENGLISH) to enchantment
-                }
-            }
-            .toMap()
+        }
+    }
+
+    private fun resolveClass(name: String): Class<*>? {
+        return runCatching {
+            LazyClass.of(source = name, dimensions = 0, isPrimitive = false, classFinder = null).instance
+        }.getOrNull()
+    }
+
+    private fun invokeWithReflex(target: Any, method: Method, vararg args: Any?): Any? {
+        val classMethod = runCatching {
+            ReflexClass.of(target.javaClass).getMethodByTypeSilently(
+                method.name,
+                true,
+                true,
+                *method.parameterTypes
+            )
+        }.getOrNull() ?: return null
+        return runCatching { classMethod.invoke(target, *args) }.getOrNull()
+    }
+
+    private fun invokeWithReflexSucceeded(target: Any, method: Method, vararg args: Any?): Boolean {
+        val classMethod = runCatching {
+            ReflexClass.of(target.javaClass).getMethodByTypeSilently(
+                method.name,
+                true,
+                true,
+                *method.parameterTypes
+            )
+        }.getOrNull() ?: return false
+        return runCatching {
+            classMethod.invoke(target, *args)
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun invokeStaticWithReflex(owner: Class<*>, method: Method, vararg args: Any?): Any? {
+        val classMethod = runCatching {
+            ReflexClass.of(owner).getMethodByTypeSilently(
+                method.name,
+                true,
+                true,
+                *method.parameterTypes
+            )
+        }.getOrNull() ?: return null
+        return runCatching { classMethod.invokeStatic(*args) }.getOrNull()
+    }
+
+    private fun invokeConstructorWithReflex(constructor: Constructor<*>, vararg args: Any?): Any? {
+        val classConstructor = runCatching {
+            ReflexClass.of(constructor.declaringClass).getConstructorByTypeSilently(*constructor.parameterTypes)
+        }.getOrNull() ?: return null
+        return runCatching { classConstructor.instance(*args) }.getOrNull()
     }
 
     open fun applyDisplayName(itemStack: ItemStack, displayName: String?) {
@@ -163,17 +214,17 @@ abstract class BaseItemMetaVersionAdapter {
 
     protected open fun applyPotionBase(itemMeta: ItemMeta, runtimeData: Map<String, Any?>) {
         val baseTypeRaw = runtimeData["potion-base-type"]?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return
-        val potionTypeClass = runCatching { Class.forName("org.bukkit.potion.PotionType") }.getOrNull() ?: return
+        val potionTypeClass = resolveClass("org.bukkit.potion.PotionType") ?: return
         val potionTypeName = baseTypeRaw.substringAfter(':').uppercase(Locale.ENGLISH).replace('-', '_')
         val potionType = resolveEnumConstant(potionTypeClass, potionTypeName) ?: return
         val setBasePotionType = itemMeta.javaClass.methods.firstOrNull { method ->
             method.name == "setBasePotionType" && method.parameterCount == 1
         }
-        if (setBasePotionType != null && runCatching { setBasePotionType.invoke(itemMeta, potionType) }.isSuccess) {
+        if (setBasePotionType != null && invokeWithReflexSucceeded(itemMeta, setBasePotionType, potionType)) {
             return
         }
 
-        val potionDataClass = runCatching { Class.forName("org.bukkit.potion.PotionData") }.getOrNull() ?: return
+        val potionDataClass = resolveClass("org.bukkit.potion.PotionData") ?: return
         val extended = booleanValue(runtimeData["potion-base-extended"]) ?: false
         val upgraded = booleanValue(runtimeData["potion-base-upgraded"]) ?: false
         val potionData = createPotionData(potionDataClass, potionType, extended, upgraded) ?: return
@@ -182,7 +233,7 @@ abstract class BaseItemMetaVersionAdapter {
 
     protected open fun applyAttributes(itemMeta: ItemMeta, rawAttributes: Any?) {
         val entries = rawAttributes as? Iterable<*> ?: return
-        val attributeClass = runCatching { Class.forName("org.bukkit.attribute.Attribute") }.getOrNull() ?: return
+        val attributeClass = resolveClass("org.bukkit.attribute.Attribute") ?: return
         val addMethod = itemMeta.javaClass.methods.firstOrNull { method ->
             method.name == "addAttributeModifier" && method.parameterCount == 2
         } ?: return
@@ -206,7 +257,7 @@ abstract class BaseItemMetaVersionAdapter {
                 operation = operation,
                 equipmentSlot = slot
             ) ?: return@forEach
-            runCatching { addMethod.invoke(itemMeta, attribute, modifier) }
+            invokeWithReflexSucceeded(itemMeta, addMethod, attribute, modifier)
         }
     }
 
@@ -215,7 +266,7 @@ abstract class BaseItemMetaVersionAdapter {
             method.name == "setItemModel" && method.parameterCount == 1
         } ?: return
         val namespacedKey = createNamespacedKey(modelId) ?: return
-        runCatching { setItemModel.invoke(itemMeta, namespacedKey) }
+        invokeWithReflexSucceeded(itemMeta, setItemModel, namespacedKey)
     }
 
     protected open fun applyTooltipStyle(itemMeta: ItemMeta, styleId: String) {
@@ -223,7 +274,7 @@ abstract class BaseItemMetaVersionAdapter {
             method.name == "setTooltipStyle" && method.parameterCount == 1
         } ?: return
         val namespacedKey = createNamespacedKey(styleId) ?: return
-        runCatching { setTooltipStyle.invoke(itemMeta, namespacedKey) }
+        invokeWithReflexSucceeded(itemMeta, setTooltipStyle, namespacedKey)
     }
 
     protected open fun applyRarity(itemMeta: ItemMeta, rarity: String) {
@@ -233,7 +284,7 @@ abstract class BaseItemMetaVersionAdapter {
         val type = setRarity.parameterTypes[0]
         val normalized = rarity.trim().uppercase(Locale.ENGLISH).replace('-', '_')
         val constant = resolveEnumConstant(type, normalized) ?: return
-        runCatching { setRarity.invoke(itemMeta, constant) }
+        invokeWithReflexSucceeded(itemMeta, setRarity, constant)
     }
 
     protected open fun applyGlider(itemMeta: ItemMeta, enabled: Boolean) {
@@ -279,7 +330,7 @@ abstract class BaseItemMetaVersionAdapter {
             val particles = booleanValue(entry["particles"]) ?: true
             val icon = booleanValue(entry["icon"]) ?: true
             val effect = createPotionEffect(effectType, duration, amplifier, ambient, particles, icon) ?: return@forEach
-            runCatching { addCustomEffect.invoke(itemMeta, effect, true) }
+            invokeWithReflexSucceeded(itemMeta, addCustomEffect, effect, true)
         }
     }
 
@@ -287,14 +338,14 @@ abstract class BaseItemMetaVersionAdapter {
         val setOwner = itemMeta.javaClass.methods.firstOrNull { method ->
             method.name == "setOwner" && method.parameterCount == 1
         }
-        if (setOwner != null && runCatching { setOwner.invoke(itemMeta, owner) }.isSuccess) {
+        if (setOwner != null && invokeWithReflexSucceeded(itemMeta, setOwner, owner)) {
             return
         }
         val setOwningPlayer = itemMeta.javaClass.methods.firstOrNull { method ->
             method.name == "setOwningPlayer" && method.parameterCount == 1
         } ?: return
         val offline = runCatching { Bukkit.getOfflinePlayer(owner) }.getOrNull() ?: return
-        runCatching { setOwningPlayer.invoke(itemMeta, offline) }
+        invokeWithReflexSucceeded(itemMeta, setOwningPlayer, offline)
     }
 
     protected open fun applySkullTexture(itemMeta: ItemMeta, runtimeData: Map<String, Any?>) {
@@ -311,14 +362,10 @@ abstract class BaseItemMetaVersionAdapter {
         val setProfile = itemMeta.javaClass.methods.firstOrNull { method ->
             method.name == "setProfile" && method.parameterCount == 1
         }
-        if (setProfile != null && runCatching { setProfile.invoke(itemMeta, profile) }.isSuccess) {
+        if (setProfile != null && invokeWithReflexSucceeded(itemMeta, setProfile, profile)) {
             return
         }
-        val field = runCatching { itemMeta.javaClass.getDeclaredField("profile") }.getOrNull() ?: return
-        runCatching {
-            field.isAccessible = true
-            field.set(itemMeta, profile)
-        }
+        runCatching { itemMeta.setProperty("profile", profile) }
     }
 
     protected open fun applySpawnerType(itemMeta: ItemMeta, entityName: String) {
@@ -332,16 +379,16 @@ abstract class BaseItemMetaVersionAdapter {
         val setBlockState = itemMeta.javaClass.methods.firstOrNull { method ->
             method.name == "setBlockState" && method.parameterCount == 1
         } ?: return
-        val state = runCatching { getBlockState.invoke(itemMeta) }.getOrNull() ?: return
+        val state = invokeWithReflex(itemMeta, getBlockState) ?: return
 
         runtimeData["spawner-entity"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { entityName ->
             val setSpawnedType = state.javaClass.methods.firstOrNull { method ->
                 method.name == "setSpawnedType" && method.parameterCount == 1
             } ?: return@let
-            val entityTypeClass = runCatching { Class.forName("org.bukkit.entity.EntityType") }.getOrNull() ?: return@let
+            val entityTypeClass = resolveClass("org.bukkit.entity.EntityType") ?: return@let
             val normalized = entityName.substringAfter(':').uppercase(Locale.ENGLISH).replace('-', '_')
             val entityType = resolveEnumConstant(entityTypeClass, normalized) ?: return@let
-            runCatching { setSpawnedType.invoke(state, entityType) }
+            invokeWithReflexSucceeded(state, setSpawnedType, entityType)
         }
 
         applySpawnerInt(state, "setDelay", intValue(runtimeData["spawner-delay"]))
@@ -352,7 +399,7 @@ abstract class BaseItemMetaVersionAdapter {
         applySpawnerInt(state, "setRequiredPlayerRange", intValue(runtimeData["spawner-required-player-range"]))
         applySpawnerInt(state, "setSpawnRange", intValue(runtimeData["spawner-spawn-range"]))
 
-        runCatching { setBlockState.invoke(itemMeta, state) }
+        invokeWithReflexSucceeded(itemMeta, setBlockState, state)
     }
 
     protected fun intValue(rawValue: Any?): Int? {
@@ -447,7 +494,7 @@ abstract class BaseItemMetaVersionAdapter {
             method.name == "getByKey" && method.parameterCount == 1
         } ?: return null
 
-        val namespacedKeyClass = runCatching { Class.forName("org.bukkit.NamespacedKey") }.getOrNull()
+        val namespacedKeyClass = resolveClass("org.bukkit.NamespacedKey")
             ?: return null
         val constructor = namespacedKeyClass.constructors.firstOrNull { ctor ->
             ctor.parameterCount == 2 &&
@@ -460,8 +507,8 @@ abstract class BaseItemMetaVersionAdapter {
         if (split.size != 2) {
             return null
         }
-        val namespacedKey = runCatching { constructor.newInstance(split[0], split[1]) }.getOrNull() ?: return null
-        return runCatching { getByKey.invoke(null, namespacedKey) as? Enchantment }.getOrNull()
+        val namespacedKey = invokeConstructorWithReflex(constructor, split[0], split[1]) ?: return null
+        return invokeStaticWithReflex(Enchantment::class.java, getByKey, namespacedKey) as? Enchantment
     }
 
     private fun stringList(rawValue: Any?): List<String> {
@@ -489,10 +536,10 @@ abstract class BaseItemMetaVersionAdapter {
         upgraded: Boolean
     ): Any? {
         potionDataClass.constructors.firstOrNull { ctor -> ctor.parameterCount == 3 }?.let { ctor ->
-            return runCatching { ctor.newInstance(potionType, extended, upgraded) }.getOrNull()
+            return invokeConstructorWithReflex(ctor, potionType, extended, upgraded)
         }
         potionDataClass.constructors.firstOrNull { ctor -> ctor.parameterCount == 1 }?.let { ctor ->
-            return runCatching { ctor.newInstance(potionType) }.getOrNull()
+            return invokeConstructorWithReflex(ctor, potionType)
         }
         return null
     }
@@ -509,9 +556,15 @@ abstract class BaseItemMetaVersionAdapter {
             ctor.parameterCount == 6
         }
         if (constructor != null) {
-            return runCatching {
-                constructor.newInstance(effectType, duration, amplifier, ambient, particles, icon) as PotionEffect
-            }.getOrNull()
+            return invokeConstructorWithReflex(
+                constructor,
+                effectType,
+                duration,
+                amplifier,
+                ambient,
+                particles,
+                icon
+            ) as? PotionEffect
         }
         return runCatching { PotionEffect(effectType, duration, amplifier, ambient, particles) }.getOrNull()
     }
@@ -540,40 +593,40 @@ abstract class BaseItemMetaVersionAdapter {
     }
 
     private fun createGameProfile(texture: String, signature: String?): Any? {
-        val profileClass = runCatching { Class.forName("com.mojang.authlib.GameProfile") }.getOrNull() ?: return null
-        val propertyClass = runCatching { Class.forName("com.mojang.authlib.properties.Property") }.getOrNull() ?: return null
+        val profileClass = resolveClass("com.mojang.authlib.GameProfile") ?: return null
+        val propertyClass = resolveClass("com.mojang.authlib.properties.Property") ?: return null
         val profile = runCatching {
             profileClass.getConstructor(UUID::class.java, String::class.java)
-                .newInstance(UUID.randomUUID(), "baikiruto")
+                .let { constructor -> invokeConstructorWithReflex(constructor, UUID.randomUUID(), "baikiruto") }
         }.getOrNull() ?: return null
         val property = runCatching {
             if (signature.isNullOrBlank()) {
                 propertyClass.getConstructor(String::class.java, String::class.java)
-                    .newInstance("textures", texture)
+                    .let { constructor -> invokeConstructorWithReflex(constructor, "textures", texture) }
             } else {
                 propertyClass.getConstructor(String::class.java, String::class.java, String::class.java)
-                    .newInstance("textures", texture, signature)
+                    .let { constructor -> invokeConstructorWithReflex(constructor, "textures", texture, signature) }
             }
         }.getOrNull() ?: return null
         val getProperties = profileClass.methods.firstOrNull { method ->
             method.name == "getProperties" && method.parameterCount == 0
         } ?: return null
-        val properties = runCatching { getProperties.invoke(profile) }.getOrNull() ?: return null
+        val properties = invokeWithReflex(profile, getProperties) ?: return null
         val put = properties.javaClass.methods.firstOrNull { method ->
             method.name == "put" && method.parameterCount == 2
         } ?: return null
-        runCatching { put.invoke(properties, "textures", property) }
+        invokeWithReflexSucceeded(properties, put, "textures", property)
         return profile
     }
 
     private fun invokeIntSetter(target: Any, name: String, value: Int): Boolean {
         val method = target.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == 1 } ?: return false
-        return runCatching { method.invoke(target, value) }.isSuccess
+        return invokeWithReflexSucceeded(target, method, value)
     }
 
     private fun invokeBooleanSetter(target: Any, name: String, value: Boolean): Boolean {
         val method = target.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == 1 } ?: return false
-        return runCatching { method.invoke(target, value) }.isSuccess
+        return invokeWithReflexSucceeded(target, method, value)
     }
 
     private fun invokeObjectSetter(target: Any, name: String, value: Any): Boolean {
@@ -582,14 +635,14 @@ abstract class BaseItemMetaVersionAdapter {
                 method.parameterCount == 1 &&
                 method.parameterTypes[0].isAssignableFrom(value.javaClass)
         } ?: return false
-        return runCatching { method.invoke(target, value) }.isSuccess
+        return invokeWithReflexSucceeded(target, method, value)
     }
 
     private fun invokeCollectionSetter(target: Any, name: String, values: Collection<*>): Boolean {
         val method = target.javaClass.methods.firstOrNull { method ->
             method.name == name && method.parameterCount == 1
         } ?: return false
-        return runCatching { method.invoke(target, values) }.isSuccess
+        return invokeWithReflexSucceeded(target, method, values)
     }
 
     private fun applySpawnerInt(state: Any, name: String, value: Int?) {
@@ -597,7 +650,7 @@ abstract class BaseItemMetaVersionAdapter {
             return
         }
         val method = state.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == 1 } ?: return
-        runCatching { method.invoke(state, value) }
+        invokeWithReflexSucceeded(state, method, value)
     }
 
     private fun applyNamespacedKeyCollection(target: Any, methodName: String, values: Collection<String>) {
@@ -606,16 +659,16 @@ abstract class BaseItemMetaVersionAdapter {
         if (keys.isEmpty()) {
             return
         }
-        runCatching { method.invoke(target, keys) }
+        invokeWithReflexSucceeded(target, method, keys)
     }
 
     private fun createNamespacedKey(raw: String): Any? {
-        val namespacedKeyClass = runCatching { Class.forName("org.bukkit.NamespacedKey") }.getOrNull() ?: return null
+        val namespacedKeyClass = resolveClass("org.bukkit.NamespacedKey") ?: return null
         val fromString = namespacedKeyClass.methods.firstOrNull { method ->
             method.name == "fromString" && method.parameterCount == 1
         }
         if (fromString != null) {
-            return runCatching { fromString.invoke(null, raw) }.getOrNull()
+            return invokeStaticWithReflex(namespacedKeyClass, fromString, raw)
         }
         val normalized = if (':' in raw) raw else "minecraft:$raw"
         val split = normalized.split(':', limit = 2)
@@ -623,7 +676,7 @@ abstract class BaseItemMetaVersionAdapter {
             return null
         }
         val constructor = namespacedKeyClass.constructors.firstOrNull { it.parameterCount == 2 } ?: return null
-        return runCatching { constructor.newInstance(split[0], split[1]) }.getOrNull()
+        return invokeConstructorWithReflex(constructor, split[0], split[1])
     }
 
     private fun resolvePotionEffectType(raw: String): PotionEffectType? {
@@ -633,7 +686,7 @@ abstract class BaseItemMetaVersionAdapter {
     }
 
     private fun resolvePotionEffectTypeByKey(raw: String): PotionEffectType? {
-        val namespacedKeyClass = runCatching { Class.forName("org.bukkit.NamespacedKey") }.getOrNull() ?: return null
+        val namespacedKeyClass = resolveClass("org.bukkit.NamespacedKey") ?: return null
         val getByKey = PotionEffectType::class.java.methods.firstOrNull { method ->
             method.name == "getByKey" && method.parameterCount == 1
         } ?: return null
@@ -641,7 +694,7 @@ abstract class BaseItemMetaVersionAdapter {
             method.name == "fromString" && method.parameterCount == 1
         } ?: return null
         val normalized = if (':' in raw) raw else "minecraft:${raw.lowercase(Locale.ENGLISH)}"
-        val key = runCatching { fromString.invoke(null, normalized) }.getOrNull() ?: return null
-        return runCatching { getByKey.invoke(null, key) as? PotionEffectType }.getOrNull()
+        val key = invokeStaticWithReflex(namespacedKeyClass, fromString, normalized) ?: return null
+        return invokeStaticWithReflex(PotionEffectType::class.java, getByKey, key) as? PotionEffectType
     }
 }
