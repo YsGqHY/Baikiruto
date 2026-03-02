@@ -485,16 +485,30 @@ class DefaultItemStream(
     private fun applyRuntimeDisplay() {
         val itemMeta = backingItem.itemMeta ?: return
         val context = runtimeTemplateContext()
-        val displayName = itemMeta.displayName
-        if (!isDisplayFieldLocked("name") && !displayName.isNullOrBlank()) {
+        val displayName = if (isDisplayFieldLocked("name")) {
+            lockedNameTemplate()
+                ?: itemMeta.displayName.takeIf { it.isNotBlank() }
+                ?: runtimeNameTemplate()
+        } else {
+            itemMeta.displayName.takeIf { it.isNotBlank() }
+                ?: runtimeNameTemplate()
+        }
+        if (!displayName.isNullOrBlank()) {
             itemMeta.setDisplayName(
                 LegacyTextColorizer.colorize(
                     renderNameTemplate(displayName, context)
                 )
             )
         }
-        val lore = itemMeta.lore
-        if (!isDisplayFieldLocked("lore") && !lore.isNullOrEmpty()) {
+        val lore = if (isDisplayFieldLocked("lore")) {
+            lockedLoreTemplates().takeIf { it.isNotEmpty() }
+                ?: itemMeta.lore?.takeIf { it.isNotEmpty() }
+                ?: runtimeLoreTemplates()
+        } else {
+            itemMeta.lore?.takeIf { it.isNotEmpty() }
+                ?: runtimeLoreTemplates()
+        }
+        if (!lore.isNullOrEmpty()) {
             itemMeta.lore = LegacyTextColorizer.colorize(
                 renderLoreTemplates(lore, context)
             ).toMutableList()
@@ -508,7 +522,7 @@ class DefaultItemStream(
         }
         val itemMeta = backingItem.itemMeta ?: return
         val displayName = itemMeta.displayName
-        if (!isDisplayFieldLocked("name") && !displayName.isNullOrBlank()) {
+        if (!displayName.isNullOrBlank()) {
             itemMeta.setDisplayName(
                 LegacyTextColorizer.colorize(
                     displayName.replacePlaceholder(player)
@@ -516,7 +530,7 @@ class DefaultItemStream(
             )
         }
         val lore = itemMeta.lore
-        if (!isDisplayFieldLocked("lore") && !lore.isNullOrEmpty()) {
+        if (!lore.isNullOrEmpty()) {
             itemMeta.lore = LegacyTextColorizer.colorize(
                 lore.replacePlaceholder(player)
             ).toMutableList()
@@ -566,8 +580,21 @@ class DefaultItemStream(
             if (key == LOCKED_DISPLAY_SIGNATURE_KEY) {
                 return@forEach
             }
+            if (key == LOCKED_DISPLAY_VALUES_KEY) {
+                return@forEach
+            }
             collect(key, value)
         }
+        val contextPlayerName = when (val source = invocationContext["player"] ?: invocationContext["sender"]) {
+            is Player -> source.name
+            is String -> source
+            else -> null
+        }?.trim()?.takeIf { it.isNotEmpty() }
+        if (contextPlayerName != null) {
+            scalar.putIfAbsent("player", contextPlayerName)
+            scalar.putIfAbsent("unique.player", contextPlayerName)
+        }
+        scalar.putIfAbsent("last_trigger", runtimeDataBacking["last_trigger"]?.toString().orEmpty())
         return DisplayTemplateContext(
             scalar = scalar.toMap(),
             list = list.mapValues { it.value.toList() }
@@ -692,6 +719,54 @@ class DefaultItemStream(
         }
     }
 
+    private fun runtimeNameTemplate(): String? {
+        val nameVariables = parseDisplayNameVariables(runtimeDataBacking["name"])
+        if (nameVariables.isEmpty()) {
+            return null
+        }
+        return nameVariables["item_name"]
+            ?: nameVariables.entries.firstOrNull()?.value
+    }
+
+    private fun runtimeLoreTemplates(): List<String> {
+        val loreVariables = parseDisplayLoreVariables(runtimeDataBacking["lore"])
+        if (loreVariables.isEmpty()) {
+            return emptyList()
+        }
+        return loreVariables.values.flatten()
+    }
+
+    private fun lockedNameTemplate(): String? {
+        val lockedValues = parseLockedDisplayValues(runtimeDataBacking[LOCKED_DISPLAY_VALUES_KEY])
+        val nameVariables = parseDisplayNameVariables(lockedValues["name"])
+        if (nameVariables.isNotEmpty()) {
+            return nameVariables["item_name"]
+                ?: nameVariables.entries.firstOrNull()?.value
+        }
+        return null
+    }
+
+    private fun lockedLoreTemplates(): List<String> {
+        val lockedValues = parseLockedDisplayValues(runtimeDataBacking[LOCKED_DISPLAY_VALUES_KEY])
+        val loreVariables = parseDisplayLoreVariables(lockedValues["lore"])
+        if (loreVariables.isEmpty()) {
+            return emptyList()
+        }
+        return loreVariables.values.flatten()
+    }
+
+    private fun parseLockedDisplayValues(source: Any?): Map<String, Any?> {
+        if (source !is Map<*, *>) {
+            return emptyMap()
+        }
+        return source.entries
+            .mapNotNull { (key, value) ->
+                val normalized = key?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                normalized to value
+            }
+            .toMap(linkedMapOf())
+    }
+
     private fun replaceRuntimeTokens(input: String, placeholders: Map<String, String>): String {
         return TOKEN_PATTERN.replace(input) { match ->
             val key = (match.groups[1]?.value ?: match.groups[2]?.value)
@@ -782,6 +857,7 @@ class DefaultItemStream(
         private const val LOCKED_DATA_PATHS_KEY = "__locked_data_paths__"
         private const val LOCKED_DISPLAY_FIELDS_KEY = "__locked_display_fields__"
         private const val LOCKED_DISPLAY_SIGNATURE_KEY = "__locked_display_signature__"
+        private const val LOCKED_DISPLAY_VALUES_KEY = "__locked_display_values__"
         private val TOKEN_PATTERN = Regex("\\{([^{}]+)}|%([^%]+)%")
         private val ANGLE_TOKEN = Regex("<([^<>]+)>")
     }
@@ -805,6 +881,9 @@ class DefaultItemStream(
                 return@forEach
             }
             if (normalizedKey == LOCKED_DISPLAY_SIGNATURE_KEY) {
+                return@forEach
+            }
+            if (normalizedKey == LOCKED_DISPLAY_VALUES_KEY) {
                 return@forEach
             }
             putRuntimeData(key, value, ignorePathLock = true)

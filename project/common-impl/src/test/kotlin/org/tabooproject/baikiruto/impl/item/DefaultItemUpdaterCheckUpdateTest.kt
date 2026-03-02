@@ -186,6 +186,51 @@ class DefaultItemUpdaterCheckUpdateTest {
     }
 
     @Test
+    fun `should detect outdated locked display when signature is derived from locked values payload`() {
+        val origin = ItemStack(Material.STONE)
+        val sourceStream = DefaultItemStream(
+            backingItem = origin.clone(),
+            itemId = "test:item",
+            versionHash = "v1",
+            initialRuntimeData = linkedMapOf(
+                "__locked_display_fields__" to listOf("name", "lore"),
+                "name" to mapOf("item_name" to "&bComponent Name"),
+                "lore" to mapOf("item_description" to listOf("&bComponent Lore"))
+            )
+        )
+        val item = DefaultItem(
+            id = "test:item",
+            template = ItemStack(Material.STONE),
+            versionHashSupplier = { "v1" },
+            defaultRuntimeData = linkedMapOf(
+                "__locked_display_fields__" to listOf("name", "lore"),
+                "name" to mapOf("item_name" to "&bComponent Name"),
+                "lore" to mapOf("item_description" to listOf("&bComponent Lore")),
+                "__locked_display_values__" to linkedMapOf(
+                    "name" to mapOf("item_name" to "&aLocked New Name"),
+                    "lore" to mapOf("item_description" to listOf("&aLocked New Lore"))
+                )
+            )
+        )
+
+        val previous = installApi(TestApi(sourceStream, item))
+        val checks = arrayListOf<ItemCheckUpdateEvent>()
+        val checkSubscription = DefaultItemEventBus.subscribe(ItemCheckUpdateEvent::class.java) {
+            checks += it
+            it.cancelled = true
+        }
+        try {
+            val result = DefaultItemUpdater.checkUpdate(null, origin)
+            assertSame(origin, result)
+            assertEquals(1, checks.size)
+            assertTrue(checks.first().isOutdated)
+        } finally {
+            checkSubscription.close()
+            restoreApi(previous)
+        }
+    }
+
+    @Test
     fun `should keep latest locked display runtime when rebuilding default stream`() {
         val sourceStream = DefaultItemStream(
             backingItem = ItemStack(Material.STONE),

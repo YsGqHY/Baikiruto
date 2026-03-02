@@ -494,6 +494,7 @@ object ItemActionListener {
         if (!locale.isNullOrBlank()) {
             baseContext["locale"] = locale
         }
+        (managed.stream as? DefaultItemStream)?.rememberInvocationContext(baseContext)
         val cancellable = event as? Cancellable
         var handled = false
         var save = false

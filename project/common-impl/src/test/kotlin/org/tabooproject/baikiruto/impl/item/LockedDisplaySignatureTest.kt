@@ -36,6 +36,28 @@ class LockedDisplaySignatureTest {
     }
 
     @Test
+    fun `should prioritize locked display values payload when available`() {
+        val first = linkedMapOf<String, Any?>(
+            "__locked_display_fields__" to listOf("name"),
+            "name" to mapOf("item_name" to "&bComponent Name"),
+            "__locked_display_values__" to mapOf(
+                "name" to mapOf("item_name" to "&6Locked-A")
+            )
+        )
+        val second = linkedMapOf<String, Any?>(
+            "__locked_display_fields__" to listOf("name"),
+            "name" to mapOf("item_name" to "&bComponent Name"),
+            "__locked_display_values__" to mapOf(
+                "name" to mapOf("item_name" to "&6Locked-B")
+            )
+        )
+        assertNotEquals(
+            LockedDisplaySignature.read(first),
+            LockedDisplaySignature.read(second)
+        )
+    }
+
+    @Test
     fun `should write signature marker into runtime data`() {
         val runtime = linkedMapOf<String, Any?>(
             "__locked_display_fields__" to listOf("name"),
@@ -49,10 +71,13 @@ class LockedDisplaySignatureTest {
     @Test
     fun `should remove stale signature when no locked display fields`() {
         val runtime = linkedMapOf<String, Any?>(
-            "__locked_display_signature__" to "stale"
+            "__locked_display_signature__" to "stale",
+            "__locked_display_values__" to mapOf(
+                "name" to mapOf("item_name" to "&6Name")
+            )
         )
         val signed = LockedDisplaySignature.withSignature(runtime)
         assertNull(signed["__locked_display_signature__"])
+        assertNull(signed["__locked_display_values__"])
     }
 }
-

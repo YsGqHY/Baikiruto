@@ -2,6 +2,8 @@
 .idea
 build
 bin
+.gradle-user
+.home
 
 CLAUDE.md
 AGENTS.md

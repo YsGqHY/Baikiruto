@@ -50,6 +50,7 @@ class DefaultItem(
             versionHash = versionHashSupplier(),
             initialRuntimeData = defaultRuntimeData
         )
+        stream.rememberInvocationContext(executionContext)
         val preEvent = ItemBuildPreEvent(
             stream = stream,
             player = player,

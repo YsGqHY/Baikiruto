@@ -558,7 +558,7 @@ object ItemDefinitionLoader {
         val metas = parseMetas(section, manager)
         val scripts = parseMergedHooks(section, models)
         val eventData = parseMergedEventData(section, models)
-        val defaultRuntimeData = LockedDisplaySignature.withSignature(
+        val defaultRuntimeData = LockedDisplaySignature.withLockedValues(
             mergeRuntimeData(
                 modelDefaults,
                 displayRuntime,
@@ -570,7 +570,8 @@ object ItemDefinitionLoader {
                 parseEffects(section.getConfigurationSection("effects")),
                 parseMetaEffects(section.getConfigurationSection("meta")),
                 parseI18n(section.getConfigurationSection("i18n"))
-            )
+            ),
+            template
         )
         val versionHash = resolveVersionHash(
             section = section,
