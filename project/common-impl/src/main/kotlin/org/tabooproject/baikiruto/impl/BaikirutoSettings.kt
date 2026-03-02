@@ -1,11 +1,13 @@
 package org.tabooproject.baikiruto.impl
 
+import org.bukkit.entity.Player
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
 import taboolib.common.platform.function.info
 import taboolib.module.configuration.Config
 import taboolib.module.configuration.ConfigNode
 import taboolib.module.configuration.Configuration
+import java.util.Locale
 
 @ConfigNode(bind = "config.yml")
 object BaikirutoSettings {
@@ -19,6 +21,25 @@ object BaikirutoSettings {
 
     @ConfigNode("settings.debug-users")
     var debugUsers = listOf<String>()
+
+    fun shouldDebugPlayer(player: Player?): Boolean {
+        if (!debug || player == null) {
+            return false
+        }
+        val whitelist = debugUsers.asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toList()
+        if (whitelist.isEmpty()) {
+            return true
+        }
+        val playerName = player.name.trim().lowercase(Locale.ENGLISH)
+        val playerUuid = player.uniqueId.toString().trim().lowercase(Locale.ENGLISH)
+        return whitelist.any { entry ->
+            val normalized = entry.lowercase(Locale.ENGLISH)
+            normalized == playerName || normalized == playerUuid
+        }
+    }
 
     @ConfigNode("script.preheat.enabled")
     var scriptPreheatEnabled = true

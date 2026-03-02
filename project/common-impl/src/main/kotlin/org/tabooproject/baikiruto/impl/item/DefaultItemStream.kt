@@ -14,6 +14,7 @@ import org.tabooproject.baikiruto.core.item.event.ItemReleaseEvent
 import org.tabooproject.baikiruto.core.item.event.ItemReleaseFinalEvent
 import org.tabooproject.baikiruto.core.item.event.ItemReleaseDisplayBuildEvent
 import org.tabooproject.baikiruto.core.item.event.ItemSelectDisplayEvent
+import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDurabilityFeature
@@ -233,6 +234,7 @@ class DefaultItemStream(
         )
         postReleaseEvent(finalEvent)
         backingItem = finalEvent.itemStack.clone()
+        sendBuildDebugMessage(player)
         return backingItem.clone()
     }
 
@@ -568,6 +570,9 @@ class DefaultItemStream(
             if (key == LOCKED_DISPLAY_FIELDS_KEY) {
                 return@forEach
             }
+            if (key == LOCKED_DISPLAY_SIGNATURE_KEY) {
+                return@forEach
+            }
             collect(key, value)
         }
         return DisplayTemplateContext(
@@ -755,10 +760,36 @@ class DefaultItemStream(
         }
     }
 
+    private fun sendBuildDebugMessage(player: Player?) {
+        if (!BaikirutoSettings.shouldDebugPlayer(player)) {
+            return
+        }
+        val target = player ?: return
+        val snapshot = snapshotData()
+        val payload = linkedMapOf<String, Any?>(
+            "stream" to linkedMapOf(
+                "itemId" to snapshot.itemId,
+                "versionHash" to snapshot.versionHash,
+                "metaHistory" to snapshot.metaHistory,
+                "signals" to signals.map { it.name }.sorted(),
+                "runtimeData" to snapshot.runtimeData
+            ),
+            "itemStack" to backingItem.serialize()
+        )
+        runCatching {
+            ItemBuildDebugMessenger.send(
+                player = target,
+                rootKey = "baikiruto_debug_item_build",
+                payload = payload
+            )
+        }
+    }
+
     companion object {
 
         private const val LOCKED_DATA_PATHS_KEY = "__locked_data_paths__"
         private const val LOCKED_DISPLAY_FIELDS_KEY = "__locked_display_fields__"
+        private const val LOCKED_DISPLAY_SIGNATURE_KEY = "__locked_display_signature__"
         private val TOKEN_PATTERN = Regex("\\{([^{}]+)}|%([^%]+)%")
         private val ANGLE_TOKEN = Regex("<([^<>]+)>")
     }
@@ -774,6 +805,16 @@ class DefaultItemStream(
 
     private fun copyRuntimeDataFrom(source: Map<String, Any?>) {
         source.forEach { (key, value) ->
+            val normalizedKey = key.trim()
+            if (normalizedKey == "name" && isDisplayFieldLocked("name")) {
+                return@forEach
+            }
+            if (normalizedKey == "lore" && isDisplayFieldLocked("lore")) {
+                return@forEach
+            }
+            if (normalizedKey == LOCKED_DISPLAY_SIGNATURE_KEY) {
+                return@forEach
+            }
             putRuntimeData(key, value, ignorePathLock = true)
         }
     }

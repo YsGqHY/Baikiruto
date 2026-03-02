@@ -120,6 +120,117 @@ class DefaultItemUpdaterCheckUpdateTest {
         }
     }
 
+    @Test
+    fun `should preserve stack amount after rebuild update`() {
+        val origin = ItemStack(Material.STONE).apply { amount = 32 }
+        val sourceStream = TestStream("test:item", "old", origin)
+        val rebuiltStream = TestStream("test:item", "new", ItemStack(Material.DIAMOND))
+        val buildCount = AtomicInteger(0)
+        val item = TestItem("test:item", rebuiltStream, buildCount)
+
+        val previous = installApi(TestApi(sourceStream, item))
+        try {
+            val result = DefaultItemUpdater.checkUpdate(null, origin)
+            assertEquals(Material.DIAMOND, result.type)
+            assertEquals(32, result.amount)
+            assertTrue(buildCount.get() >= 2)
+        } finally {
+            restoreApi(previous)
+        }
+    }
+
+    @Test
+    fun `should update when locked display signature changes with same version hash`() {
+        val origin = ItemStack(Material.STONE)
+        val sourceStream = DefaultItemStream(
+            backingItem = origin.clone(),
+            itemId = "test:item",
+            versionHash = "v1",
+            initialRuntimeData = linkedMapOf(
+                "__locked_display_fields__" to listOf("name", "lore"),
+                "name" to mapOf("item_name" to "&cOld Name"),
+                "lore" to mapOf("item_description" to listOf("&cOld Lore"))
+            )
+        )
+        val item = DefaultItem(
+            id = "test:item",
+            template = ItemStack(Material.STONE),
+            versionHashSupplier = { "v1" },
+            defaultRuntimeData = linkedMapOf(
+                "__locked_display_fields__" to listOf("name", "lore"),
+                "name" to mapOf("item_name" to "&aNew Name"),
+                "lore" to mapOf("item_description" to listOf("&aNew Lore"))
+            )
+        )
+
+        val previous = installApi(TestApi(sourceStream, item))
+        val checks = arrayListOf<ItemCheckUpdateEvent>()
+        val updates = arrayListOf<ItemUpdateEvent>()
+        val checkSubscription = DefaultItemEventBus.subscribe(ItemCheckUpdateEvent::class.java) {
+            checks += it
+            it.cancelled = true
+        }
+        val updateSubscription = DefaultItemEventBus.subscribe(ItemUpdateEvent::class.java) { updates += it }
+        try {
+            val result = DefaultItemUpdater.checkUpdate(null, origin)
+            assertSame(origin, result)
+            assertEquals(1, checks.size)
+            assertTrue(checks.first().isOutdated)
+            assertTrue(checks.first().cancelled)
+            assertTrue(updates.isEmpty())
+        } finally {
+            checkSubscription.close()
+            updateSubscription.close()
+            restoreApi(previous)
+        }
+    }
+
+    @Test
+    fun `should keep latest locked display runtime when rebuilding default stream`() {
+        val sourceStream = DefaultItemStream(
+            backingItem = ItemStack(Material.STONE),
+            itemId = "test:item",
+            versionHash = "old",
+            initialRuntimeData = linkedMapOf(
+                "__locked_display_fields__" to listOf("name", "lore"),
+                "name" to mapOf("item_name" to "&cOld Name"),
+                "lore" to mapOf("item_description" to listOf("&cOld Lore")),
+                "custom" to 1
+            )
+        )
+        val latestRuntime = linkedMapOf<String, Any?>(
+            "__locked_display_fields__" to listOf("name", "lore"),
+            "name" to mapOf("item_name" to "&aNew Name"),
+            "lore" to mapOf("item_description" to listOf("&aNew Lore")),
+            "custom" to 2
+        )
+        val item = object : Item {
+            override val id: String = "test:item"
+            override val metas: List<Meta> = emptyList()
+
+            override fun build(context: Map<String, Any?>): ItemStream {
+                return DefaultItemStream(
+                    backingItem = ItemStack(Material.DIAMOND),
+                    itemId = "test:item",
+                    versionHash = "new",
+                    initialRuntimeData = latestRuntime
+                )
+            }
+        }
+
+        val previous = installApi(TestApi(sourceStream, item))
+        try {
+            val rebuilt = sourceStream.rebuild(null)
+            val name = rebuilt.runtimeData["name"] as Map<*, *>
+            val lore = rebuilt.runtimeData["lore"] as Map<*, *>
+            assertEquals("&aNew Name", name["item_name"])
+            assertEquals(listOf("&aNew Lore"), lore["item_description"])
+            assertEquals(1, rebuilt.runtimeData["custom"])
+        } finally {
+            restoreApi(previous)
+        }
+    }
+
     private fun installApi(api: BaikirutoAPI): BaikirutoAPI? {
         val field = Baikiruto::class.java.getDeclaredField("api")
         field.isAccessible = true

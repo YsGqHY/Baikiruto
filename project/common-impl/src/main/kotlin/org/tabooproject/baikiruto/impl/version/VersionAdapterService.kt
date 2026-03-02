@@ -76,12 +76,9 @@ object VersionAdapterService {
 
     private fun detectProfile(): VersionFeatureProfile {
         val versionId = MinecraftVersion.versionId
-        val in112Range = MinecraftVersion.isIn(MinecraftVersion.V1_12, MinecraftVersion.V1_12) &&
-            versionId in 11200..11299
-        val in120Range = MinecraftVersion.isIn(MinecraftVersion.V1_20, MinecraftVersion.V1_20) &&
-            versionId in 12000..12099
-        val in121Range = MinecraftVersion.isIn(MinecraftVersion.V1_21, MinecraftVersion.V1_21) &&
-            versionId in 12100..12199
+        val in112Range = versionId in 11200..11299
+        val in120Range = versionId in 12000..12099
+        val in121Range = versionId in 12100..12199
 
         val supportsCustomModelData = when {
             versionId in 11400..11999 -> true

@@ -33,6 +33,10 @@ class DefaultItem(
         return versionHashSupplier()
     }
 
+    fun lockedDisplaySignature(): String? {
+        return LockedDisplaySignature.read(defaultRuntimeData)
+    }
+
     override fun build(context: Map<String, Any?>): ItemStream {
         val startAt = System.nanoTime()
         val executionContext = LinkedHashMap(defaultRuntimeData)

@@ -5,6 +5,7 @@ import org.tabooproject.baikiruto.core.item.ItemModel
 import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class ItemDefinitionLoaderCompatibilityTest {
@@ -42,6 +43,55 @@ class ItemDefinitionLoaderCompatibilityTest {
         val lore = (effects["lore"] as Map<*, *>)["item_description"] as List<*>
         assertEquals(listOf("&eLine 1", "&aLine 2"), lore)
         assertEquals(1001, effects["custom-model-data"])
+    }
+
+    @Test
+    fun `should keep raw components for high version adapter`() {
+        val effects = invokeMapMethod(
+            "parseComponents",
+            mapOf(
+                "minecraft:custom_data" to mapOf("foo" to "bar"),
+                "minecraft:attribute_modifiers" to mapOf(
+                    "modifiers" to emptyList<Map<String, Any?>>(),
+                    "show_in_tooltip" to false
+                ),
+                "minecraft:unbreakable" to mapOf("show_in_tooltip" to false)
+            )
+        )
+        val components = effects["components"] as Map<*, *>
+        val customData = components["custom_data"] as Map<*, *>
+        val attributes = components["attribute_modifiers"] as Map<*, *>
+        val unbreakable = components["unbreakable"] as Map<*, *>
+
+        assertEquals("bar", customData["foo"])
+        assertEquals(false, attributes["show_in_tooltip"])
+        assertEquals(false, unbreakable["show_in_tooltip"])
+    }
+
+    @Test
+    fun `should merge components and custom data across runtime chunks`() {
+        val merged = invokeMergeRuntimeData(
+            mapOf(
+                "components" to mapOf(
+                    "custom_data" to mapOf("foo" to "bar"),
+                    "item_model" to "demo:model_a"
+                )
+            ),
+            mapOf(
+                "components" to mapOf(
+                    "custom_data" to mapOf("count" to 2),
+                    "custom_model_data" to 1001
+                )
+            )
+        )
+
+        val components = merged["components"] as Map<*, *>
+        val customData = components["custom_data"] as Map<*, *>
+
+        assertEquals("demo:model_a", components["item_model"])
+        assertEquals(1001, components["custom_model_data"])
+        assertEquals("bar", customData["foo"])
+        assertEquals(2, customData["count"])
     }
 
     @Test
@@ -147,6 +197,138 @@ class ItemDefinitionLoaderCompatibilityTest {
     }
 
     @Test
+    fun `should resolve display name from locked section`() {
+        val section = sectionOf(
+            mapOf(
+                "name!!" to mapOf(
+                    "item_name" to "&6Locked Name"
+                )
+            )
+        )
+        assertEquals("&6Locked Name", invokeSectionStringMethod("parseDisplayName", section))
+    }
+
+    @Test
+    fun `should resolve display name from locked structured text section`() {
+        val section = sectionOf(
+            mapOf(
+                "name!!" to mapOf(
+                    "text" to "Locked Name",
+                    "color" to "gold",
+                    "italic" to false
+                )
+            )
+        )
+        assertEquals("&6Locked Name", invokeSectionStringMethod("parseDisplayName", section))
+        val nameMap = invokeSectionMapMethod("parseNameMap", section)
+        assertEquals("&6Locked Name", nameMap["item_name"])
+    }
+
+    @Test
+    fun `should resolve lore from locked section`() {
+        val section = sectionOf(
+            mapOf(
+                "lore!!" to mapOf(
+                    "item_type" to "&71.21.11 full feature item",
+                    "item_description" to listOf(
+                        "&7Use /baikiruto debug give example:all_features"
+                    )
+                )
+            )
+        )
+        assertEquals(
+            listOf("&71.21.11 full feature item", "&7Use /baikiruto debug give example:all_features"),
+            invokeSectionListMethod("parseLore", section)
+        )
+    }
+
+    @Test
+    fun `should resolve lore from locked structured text values`() {
+        val section = sectionOf(
+            mapOf(
+                "lore!!" to mapOf(
+                    "item_type" to mapOf(
+                        "text" to "Type",
+                        "color" to "gray"
+                    ),
+                    "item_description" to listOf(
+                        mapOf(
+                            "text" to "Line A",
+                            "color" to "yellow"
+                        ),
+                        "&aLine B"
+                    )
+                )
+            )
+        )
+        assertEquals(
+            listOf("&7Type", "&eLine A", "&aLine B"),
+            invokeSectionListMethod("parseLore", section)
+        )
+        val loreMap = invokeSectionMapMethod("parseLoreMap", section)
+        assertEquals(listOf("&7Type"), loreMap["item_type"])
+        assertEquals(listOf("&eLine A", "&aLine B"), loreMap["item_description"])
+    }
+
+    @Test
+    fun `should normalize structured display runtime for locked name and lore`() {
+        val runtime = invokeDisplayRuntimeDataMethod(
+            mapOf(
+                "text" to "Locked Name",
+                "color" to "gold",
+                "italic" to false
+            ),
+            mapOf(
+                "item_description" to listOf(
+                    mapOf("text" to "Line A", "color" to "yellow"),
+                    "&aLine B"
+                )
+            )
+        )
+        val name = runtime["name"] as Map<*, *>
+        val lore = runtime["lore"] as Map<*, *>
+        assertEquals("&6Locked Name", name["item_name"])
+        assertEquals(listOf("&eLine A", "&aLine B"), lore["item_description"])
+    }
+
+    @Test
+    fun `should keep explicit version hash when configured`() {
+        val section = sectionOf(mapOf("version-hash" to "manual-hash"))
+        val payload = linkedMapOf<String, Any?>(
+            "runtimeData" to mapOf("name" to mapOf("item_name" to "&6Locked"))
+        )
+        assertEquals("manual-hash", invokeVersionHashMethod(section, payload))
+    }
+
+    @Test
+    fun `should generate stable hash and change when locked display payload changes`() {
+        val section = sectionOf(emptyMap())
+        val basePayload = linkedMapOf<String, Any?>(
+            "itemId" to "test:item",
+            "runtimeData" to linkedMapOf(
+                "__locked_display_fields__" to listOf("name", "lore"),
+                "name" to mapOf("item_name" to "&6Locked Name"),
+                "lore" to mapOf("item_description" to listOf("&7Line-A"))
+            )
+        )
+        val changedPayload = linkedMapOf<String, Any?>(
+            "itemId" to "test:item",
+            "runtimeData" to linkedMapOf(
+                "__locked_display_fields__" to listOf("name", "lore"),
+                "name" to mapOf("item_name" to "&6Locked Name"),
+                "lore" to mapOf("item_description" to listOf("&7Line-B"))
+            )
+        )
+
+        val hash1 = invokeVersionHashMethod(section, basePayload)
+        val hash2 = invokeVersionHashMethod(section, basePayload)
+        val hash3 = invokeVersionHashMethod(section, changedPayload)
+
+        assertEquals(hash1, hash2)
+        assertNotEquals(hash1, hash3)
+    }
+
+    @Test
     fun `should load metas from legacy meta section`() {
         val section = sectionOf(
             mapOf(
@@ -181,6 +363,17 @@ class ItemDefinitionLoaderCompatibilityTest {
     }
 
     @Suppress("UNCHECKED_CAST")
+    private fun invokeMergeRuntimeData(vararg chunks: Map<String, Any?>): Map<String, Any?> {
+        val method = ItemDefinitionLoader::class.java.declaredMethods.first { method ->
+            method.name == "mergeRuntimeData" &&
+                method.parameterCount == 1 &&
+                method.parameterTypes[0].isArray
+        }
+        method.isAccessible = true
+        return method.invoke(ItemDefinitionLoader, chunks) as Map<String, Any?>
+    }
+
+    @Suppress("UNCHECKED_CAST")
     private fun invokeSectionMapMethod(name: String, section: ConfigurationSection): Map<String, Any?> {
         val method = ItemDefinitionLoader::class.java.getDeclaredMethod(name, ConfigurationSection::class.java)
         method.isAccessible = true
@@ -192,6 +385,33 @@ class ItemDefinitionLoaderCompatibilityTest {
         val method = ItemDefinitionLoader::class.java.getDeclaredMethod(name, ConfigurationSection::class.java)
         method.isAccessible = true
         return method.invoke(ItemDefinitionLoader, section) as List<String>
+    }
+
+    private fun invokeSectionStringMethod(name: String, section: ConfigurationSection): String? {
+        val method = ItemDefinitionLoader::class.java.getDeclaredMethod(name, ConfigurationSection::class.java)
+        method.isAccessible = true
+        return method.invoke(ItemDefinitionLoader, section) as String?
+    }
+
+    private fun invokeVersionHashMethod(section: ConfigurationSection, payload: Map<String, Any?>): String {
+        val method = ItemDefinitionLoader::class.java.getDeclaredMethod(
+            "resolveVersionHash",
+            ConfigurationSection::class.java,
+            Map::class.java
+        )
+        method.isAccessible = true
+        return method.invoke(ItemDefinitionLoader, section, payload) as String
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun invokeDisplayRuntimeDataMethod(name: Any?, lore: Any?): Map<String, Any?> {
+        val method = ItemDefinitionLoader::class.java.getDeclaredMethod(
+            "parseDisplayAsRuntimeData",
+            Any::class.java,
+            Any::class.java
+        )
+        method.isAccessible = true
+        return method.invoke(ItemDefinitionLoader, name, lore) as Map<String, Any?>
     }
 
     @Suppress("UNCHECKED_CAST")

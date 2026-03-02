@@ -13,6 +13,7 @@ import taboolib.common.platform.command.CommandHeader
 import taboolib.common.platform.command.mainCommand
 import taboolib.common.platform.command.subCommand
 import taboolib.common.platform.command.suggestUncheck
+import taboolib.expansion.createHelper
 import taboolib.platform.util.isAir
 
 @CommandHeader(
@@ -26,9 +27,7 @@ object BaikirutoCommand {
 
     @CommandBody(permission = "baikiruto.command")
     val main = mainCommand {
-        exec<CommandSender> {
-            sender.sendMessage("Baikiruto is running. Try /baikiruto debug build <itemId> or /baikiruto reload.")
-        }
+        createHelper()
     }
 
     @CommandBody(permission = "baikiruto.command.reload")

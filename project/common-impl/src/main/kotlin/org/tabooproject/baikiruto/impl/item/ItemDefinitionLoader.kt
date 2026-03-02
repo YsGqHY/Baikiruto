@@ -22,6 +22,8 @@ import taboolib.library.configuration.ConfigurationSection
 import taboolib.library.xseries.XMaterial
 import taboolib.module.configuration.Configuration
 import java.io.File
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArraySet
 
@@ -289,16 +291,27 @@ object ItemDefinitionLoader {
         val nameSection = section.getConfigurationSection("name!!")
             ?: section.getConfigurationSection("name")
         if (nameSection != null) {
-            return nameSection.getKeys(false).associateWith { key ->
-                nameSection.getString(key).orEmpty()
+            val name = linkedMapOf<String, String>()
+            nameSection.getKeys(false).forEach { key ->
+                parseDisplayTextValue(nameSection.get(key))?.let { parsed ->
+                    name[key] = parsed
+                }
+            }
+            if ("item_name" !in name) {
+                parseDisplayTextFromSection(nameSection)?.let { parsed ->
+                    name["item_name"] = parsed
+                }
+            }
+            if (name.isNotEmpty()) {
+                return name
             }
         }
-        val direct = section.getString("display-name!!")
-            ?: section.getString("name!!")
-            ?: section.getString("display-name")
-            ?: section.getString("name")
-        if (!direct.isNullOrBlank()) {
-            return mapOf("item_name" to direct)
+        val direct = section.get("display-name!!")
+            ?: section.get("name!!")
+            ?: section.get("display-name")
+            ?: section.get("name")
+        parseDisplayTextValue(direct)?.let { parsed ->
+            return mapOf("item_name" to parsed)
         }
         return emptyMap()
     }
@@ -308,25 +321,30 @@ object ItemDefinitionLoader {
             ?: section.getConfigurationSection("lore")
         if (loreSection != null) {
             val autoWrap = loreSection.getInt("~autowrap")
-            return loreSection.getKeys(false)
+            val lore = linkedMapOf<String, List<String>>()
+            loreSection.getKeys(false)
                 .filterNot { it == "~autowrap" }
-                .associateWith { key ->
+                .forEach { key ->
                 val value = loreSection.get(key)
-                val lines = when (value) {
-                    is String -> value.split('\n')
-                    is List<*> -> value.filterIsInstance<String>().flatMap { it.split('\n') }
-                    else -> emptyList()
+                val lines = parseDisplayLoreValue(value, autoWrap)
+                if (lines.isNotEmpty()) {
+                    lore[key] = lines
                 }
-                applyAutoWrap(lines, autoWrap)
+            }
+            if ("item_description" !in lore) {
+                val combined = parseDisplayLoreValue(sectionToMap(loreSection), autoWrap)
+                if (combined.isNotEmpty()) {
+                    lore["item_description"] = combined
+                }
+            }
+            if (lore.isNotEmpty()) {
+                return lore
             }
         }
-        val direct = section.getStringList("lore!!").ifEmpty { section.getStringList("lore") }
-        if (direct.isNotEmpty()) {
-            return mapOf("item_description" to direct.flatMap { it.split('\n') })
-        }
-        val directString = section.getString("lore!!") ?: section.getString("lore")
-        if (!directString.isNullOrBlank()) {
-            return mapOf("item_description" to directString.split('\n'))
+        val direct = section.get("lore!!") ?: section.get("lore")
+        val lines = parseDisplayLoreValue(direct, 0)
+        if (lines.isNotEmpty()) {
+            return mapOf("item_description" to lines)
         }
         return emptyMap()
     }
@@ -530,24 +548,18 @@ object ItemDefinitionLoader {
         val itemMeta = template.itemMeta
         if (itemMeta != null) {
             if (!displayName.isNullOrBlank()) {
-                itemMeta.setDisplayName(displayName)
+                itemMeta.setDisplayName(LegacyTextColorizer.colorize(displayName))
             }
             if (lore.isNotEmpty()) {
-                itemMeta.lore = lore.toMutableList()
+                itemMeta.lore = LegacyTextColorizer.colorize(lore).toMutableList()
             }
             template.itemMeta = itemMeta
         }
-        return DefaultItem(
-            id = itemId,
-            template = template.clone(),
-            versionHashSupplier = { section.getString("version-hash", "m1-dev") ?: "m1-dev" },
-            groupId = groupId,
-            displayId = displayId,
-            modelIds = modelIds,
-            metas = parseMetas(section, manager),
-            scripts = parseMergedHooks(section, models),
-            eventData = parseMergedEventData(section, models),
-            defaultRuntimeData = mergeRuntimeData(
+        val metas = parseMetas(section, manager)
+        val scripts = parseMergedHooks(section, models)
+        val eventData = parseMergedEventData(section, models)
+        val defaultRuntimeData = LockedDisplaySignature.withSignature(
+            mergeRuntimeData(
                 modelDefaults,
                 displayRuntime,
                 itemDisplayRuntime,
@@ -560,6 +572,83 @@ object ItemDefinitionLoader {
                 parseI18n(section.getConfigurationSection("i18n"))
             )
         )
+        val versionHash = resolveVersionHash(
+            section = section,
+            payload = linkedMapOf(
+                "itemId" to itemId,
+                "item" to sectionToMap(section),
+                "modelIds" to modelIds,
+                "models" to models.associate { model -> model.id to model.data },
+                "displayId" to displayId,
+                "display" to display?.data,
+                "template" to template.serialize(),
+                "runtimeData" to defaultRuntimeData
+            )
+        )
+        return DefaultItem(
+            id = itemId,
+            template = template.clone(),
+            versionHashSupplier = { versionHash },
+            groupId = groupId,
+            displayId = displayId,
+            modelIds = modelIds,
+            metas = metas,
+            scripts = scripts,
+            eventData = eventData,
+            defaultRuntimeData = defaultRuntimeData
+        )
+    }
+
+    private fun resolveVersionHash(section: ConfigurationSection, payload: Map<String, Any?>): String {
+        val explicit = section.getString("version-hash")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        if (explicit != null) {
+            return explicit
+        }
+        return sha1(canonicalizeForHash(payload))
+    }
+
+    private fun canonicalizeForHash(source: Any?): String {
+        return when (source) {
+            null -> "null"
+            is String -> "\"${escapeHashToken(source)}\""
+            is Number, is Boolean -> source.toString()
+            is ConfigurationSection -> canonicalizeForHash(sectionToMap(source))
+            is Map<*, *> -> source.entries
+                .mapNotNull { (rawKey, value) ->
+                    val key = rawKey?.toString() ?: return@mapNotNull null
+                    key to canonicalizeForHash(value)
+                }
+                .sortedBy { it.first }
+                .joinToString(prefix = "{", postfix = "}") { (key, value) ->
+                    "\"${escapeHashToken(key)}\":$value"
+                }
+            is Iterable<*> -> source.joinToString(prefix = "[", postfix = "]") { value ->
+                canonicalizeForHash(value)
+            }
+            is Array<*> -> source.joinToString(prefix = "[", postfix = "]") { value ->
+                canonicalizeForHash(value)
+            }
+            else -> "\"${escapeHashToken(source.toString())}\""
+        }
+    }
+
+    private fun escapeHashToken(source: String): String {
+        return source
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\r", "\\r")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+    }
+
+    private fun sha1(source: String): String {
+        val digest = MessageDigest.getInstance("SHA-1")
+            .digest(source.toByteArray(StandardCharsets.UTF_8))
+        return digest.joinToString("") { byte ->
+            "%02x".format(byte.toInt() and 0xFF)
+        }
     }
 
     private fun parseMetas(section: ConfigurationSection, manager: ItemManager): List<Meta> {
@@ -767,17 +856,35 @@ object ItemDefinitionLoader {
 
     private fun parseDisplayAsRuntimeData(name: Any?, lore: Any?): Map<String, Any?> {
         val data = linkedMapOf<String, Any?>()
-        val nameMap = anyToMap(name).ifEmpty {
-            stringValue(name)?.let { mapOf("item_name" to it) } ?: emptyMap()
+        val nameMap = linkedMapOf<String, String>()
+        anyToMap(name).forEach { (key, value) ->
+            parseDisplayTextValue(value)?.let { parsed ->
+                nameMap[key] = parsed
+            }
+        }
+        if ("item_name" !in nameMap) {
+            parseDisplayTextValue(name)?.let { parsed ->
+                nameMap["item_name"] = parsed
+            }
         }
         if (nameMap.isNotEmpty()) {
-            data["name"] = nameMap
+            data["name"] = nameMap.toMap()
         }
-        val loreMap = anyToMap(lore).ifEmpty {
-            toStringList(lore).takeIf { it.isNotEmpty() }?.let { mapOf("item_description" to it) } ?: emptyMap()
+        val loreMap = linkedMapOf<String, List<String>>()
+        anyToMap(lore).forEach { (key, value) ->
+            val parsed = parseDisplayLoreValue(value, 0)
+            if (parsed.isNotEmpty()) {
+                loreMap[key] = parsed
+            }
+        }
+        if ("item_description" !in loreMap) {
+            val parsed = parseDisplayLoreValue(lore, 0)
+            if (parsed.isNotEmpty()) {
+                loreMap["item_description"] = parsed
+            }
         }
         if (loreMap.isNotEmpty()) {
-            data["lore"] = loreMap
+            data["lore"] = loreMap.toMap()
         }
         return data
     }
@@ -996,8 +1103,11 @@ object ItemDefinitionLoader {
             return emptyMap()
         }
         val effects = linkedMapOf<String, Any?>()
+        val components = linkedMapOf<String, Any?>()
         section.forEach { (rawComponentId, rawValue) ->
-            when (ComponentConfigParser.normalizeComponentKey(rawComponentId)) {
+            val componentKey = ComponentConfigParser.normalizeComponentKey(rawComponentId)
+            val normalizedComponentValue = normalizeComponentInput(rawValue)
+            when (componentKey) {
                 "item_model" -> {
                     stringValue(rawValue)?.let { effects["item-model"] = it }
                 }
@@ -1106,8 +1216,32 @@ object ItemDefinitionLoader {
                     }
                 }
             }
+            val canonicalKey = when (componentKey) {
+                "name" -> "custom_name"
+                "enchantment" -> "enchantments"
+                else -> componentKey
+            }
+            if (normalizedComponentValue != null) {
+                components[canonicalKey] = normalizedComponentValue
+            }
+        }
+        if (components.isNotEmpty()) {
+            effects["components"] = components
         }
         return effects
+    }
+
+    private fun normalizeComponentInput(source: Any?): Any? {
+        return when (source) {
+            null -> null
+            is ConfigurationSection -> normalizeComponentInput(sectionToMap(source))
+            is Map<*, *> -> source.entries.mapNotNull { (rawKey, rawValue) ->
+                val key = rawKey?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                key to normalizeComponentInput(rawValue)
+            }.toMap(linkedMapOf())
+            is Iterable<*> -> source.map { value -> normalizeComponentInput(value) }
+            else -> source
+        }
     }
 
     private fun parseMetaEffects(section: ConfigurationSection?): Map<String, Any?> {
@@ -1781,6 +1915,10 @@ object ItemDefinitionLoader {
                     }
                     return@forEach
                 }
+                if (key == "components") {
+                    mergeComponentRuntimeData(merged, value)
+                    return@forEach
+                }
                 merged[key] = value
             }
         }
@@ -1793,36 +1931,102 @@ object ItemDefinitionLoader {
         return merged
     }
 
-    private fun parseDisplayName(section: ConfigurationSection): String? {
-        val direct = section.getString("display-name!!")
-            ?: section.getString("name!!")
-            ?: section.getString("display-name")
-            ?: section.getString("name")
-        if (!direct.isNullOrBlank()) {
-            return direct
+    private fun mergeComponentRuntimeData(target: MutableMap<String, Any?>, rawValue: Any?) {
+        val incoming = normalizeComponentInput(rawValue) as? Map<*, *> ?: return
+        if (incoming.isEmpty()) {
+            return
         }
-        val nameSection = section.getConfigurationSection("name!!")
-            ?: section.getConfigurationSection("name")
-            ?: return null
-        return nameSection.getString("item_name")
-            ?: nameSection.getKeys(false).firstNotNullOfOrNull { key ->
-                nameSection.getString(key)
+        val current = target["components"] as? Map<*, *>
+        if (current == null || current.isEmpty()) {
+            target["components"] = incoming
+            return
+        }
+        val merged = linkedMapOf<String, Any?>()
+        current.forEach { (rawKey, rawComponentValue) ->
+            val key = canonicalComponentKey(rawKey?.toString()) ?: return@forEach
+            merged[key] = rawComponentValue
+        }
+        incoming.forEach { (rawKey, rawComponentValue) ->
+            val key = canonicalComponentKey(rawKey?.toString()) ?: return@forEach
+            val currentValue = merged[key]
+            merged[key] = if (key == "custom_data") {
+                mergeCustomDataMaps(currentValue, rawComponentValue)
+            } else {
+                rawComponentValue
             }
+        }
+        target["components"] = merged
+    }
+
+    private fun canonicalComponentKey(source: String?): String? {
+        val normalized = source?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return when (ComponentConfigParser.normalizeComponentKey(normalized)) {
+            "name" -> "custom_name"
+            "enchantment" -> "enchantments"
+            else -> ComponentConfigParser.normalizeComponentKey(normalized)
+        }
+    }
+
+    private fun mergeCustomDataMaps(oldValue: Any?, newValue: Any?): Any? {
+        val oldMap = normalizeComponentInput(oldValue) as? Map<*, *>
+        val newMap = normalizeComponentInput(newValue) as? Map<*, *>
+        if (oldMap == null || oldMap.isEmpty()) {
+            return newValue
+        }
+        if (newMap == null || newMap.isEmpty()) {
+            return oldValue
+        }
+        val merged = linkedMapOf<String, Any?>()
+        oldMap.forEach { (rawKey, rawEntryValue) ->
+            val key = rawKey?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+            merged[key] = rawEntryValue
+        }
+        newMap.forEach { (rawKey, rawEntryValue) ->
+            val key = rawKey?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+            merged[key] = rawEntryValue
+        }
+        return merged
+    }
+
+    private fun parseDisplayName(section: ConfigurationSection): String? {
+        parseDisplayTextValue(section.get("display-name!!"))?.let { return it }
+
+        val lockedNameSection = section.getConfigurationSection("name!!")
+        if (lockedNameSection != null) {
+            parseDisplayTextFromSection(lockedNameSection)?.let { return it }
+        }
+
+        parseDisplayTextValue(section.get("name!!"))?.let { return it }
+        parseDisplayTextValue(section.get("display-name"))?.let { return it }
+        parseDisplayTextValue(section.get("name"))?.let { return it }
+
+        val nameSection = section.getConfigurationSection("name") ?: return null
+        return parseDisplayTextFromSection(nameSection)
     }
 
     private fun parseLore(section: ConfigurationSection): List<String> {
-        val directLore = section.getStringList("lore!!")
-            .ifEmpty { section.getStringList("lore") }
-        if (directLore.isNotEmpty()) {
-            return directLore.flatMap { it.split('\n') }
+        val lockedLoreSection = section.getConfigurationSection("lore!!")
+        if (lockedLoreSection != null) {
+            val parsed = parseLoreSection(lockedLoreSection)
+            if (parsed.isNotEmpty()) {
+                return parsed
+            }
         }
-        val loreString = section.getString("lore!!") ?: section.getString("lore")
-        if (!loreString.isNullOrBlank()) {
-            return loreString.split('\n')
+
+        parseDisplayLoreValue(section.get("lore!!"), 0).takeIf { it.isNotEmpty() }?.let { return it }
+
+        val loreSection = section.getConfigurationSection("lore")
+        if (loreSection != null) {
+            val parsed = parseLoreSection(loreSection)
+            if (parsed.isNotEmpty()) {
+                return parsed
+            }
         }
-        val loreSection = section.getConfigurationSection("lore!!")
-            ?: section.getConfigurationSection("lore")
-            ?: return emptyList()
+
+        return parseDisplayLoreValue(section.get("lore"), 0)
+    }
+
+    private fun parseLoreSection(loreSection: ConfigurationSection): List<String> {
         val autoWrap = loreSection.getInt("~autowrap")
         val lore = mutableListOf<String>()
         loreSection.getKeys(false).forEach { key ->
@@ -1830,12 +2034,41 @@ object ItemDefinitionLoader {
                 return@forEach
             }
             val value = loreSection.get(key)
-            when (value) {
-                is String -> lore += applyAutoWrap(value.split('\n'), autoWrap)
-                is List<*> -> lore += applyAutoWrap(value.filterIsInstance<String>().flatMap { it.split('\n') }, autoWrap)
+            val lines = parseDisplayLoreValue(value, autoWrap)
+            if (lines.isNotEmpty()) {
+                lore += lines
             }
         }
         return lore
+    }
+
+    private fun parseDisplayTextFromSection(section: ConfigurationSection): String? {
+        return parseDisplayTextValue(sectionToMap(section))
+            ?: parseDisplayTextValue(section.get("item_name"))
+            ?: section.getKeys(false).firstNotNullOfOrNull { key ->
+                parseDisplayTextValue(section.get(key))
+            }
+    }
+
+    private fun parseDisplayTextValue(source: Any?): String? {
+        return ComponentConfigParser.parseText(source)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun parseDisplayLoreValue(source: Any?, autoWrap: Int): List<String> {
+        val parsed = ComponentConfigParser.parseTextList(source)
+        val normalized = if (parsed.isNotEmpty()) {
+            parsed.flatMap { it.split('\n') }
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        } else {
+            toStringList(source)
+                .flatMap { it.split('\n') }
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        }
+        return applyAutoWrap(normalized, autoWrap)
     }
 
     private fun applyAutoWrap(lines: List<String>, size: Int): List<String> {
