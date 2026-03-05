@@ -1,6 +1,7 @@
 package org.tabooproject.baikiruto.impl
 
 import org.tabooproject.baikiruto.core.Baikiruto
+import org.tabooproject.baikiruto.impl.metrics.BaikirutoMetrics
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
 import taboolib.common.platform.function.info
@@ -38,6 +39,7 @@ object DefaultBaikirutoBooster {
 
     @Awake(LifeCycle.ACTIVE)
     private fun onActive() {
+        BaikirutoMetrics.initializeBStats()
         info(
             "[Baikiruto] ACTIVE completed, debug=${BaikirutoSettings.debug}, " +
                 "scriptPreheat=${BaikirutoSettings.scriptPreheatEnabled}"

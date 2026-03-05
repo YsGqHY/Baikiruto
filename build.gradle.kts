@@ -25,6 +25,7 @@ subprojects {
             install(Basic, Bukkit, BukkitUtil, BukkitNMS, BukkitNMSUtil, BukkitUI, BukkitHook)
             install(Database, DatabasePlayer)
             install(CommandHelper)
+            install(Metrics)
         }
         version { taboolib = "6.2.4-99fb800" }
     }
@@ -58,6 +59,18 @@ subprojects {
     tasks.withType<Test> {
         useJUnitPlatform()
     }
+}
+
+tasks.register("publishLocal") {
+    group = "publishing"
+    description = "Publish source/buildApi/plugin artifacts to mavenLocal."
+    dependsOn(":plugin:publishMavenPublicationToMavenLocal")
+}
+
+tasks.register("publishAeolian") {
+    group = "publishing"
+    description = "Publish source/buildApi/plugin artifacts to Aeolian releases repository."
+    dependsOn(":plugin:publishMavenPublicationToAeolianReleasesRepository")
 }
 
 gradle.buildFinished {

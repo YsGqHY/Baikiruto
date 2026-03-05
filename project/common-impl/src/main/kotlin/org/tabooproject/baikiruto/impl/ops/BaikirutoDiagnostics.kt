@@ -15,6 +15,11 @@ object BaikirutoDiagnostics {
         val cacheStats = runCatching { Baikiruto.api().getScriptHandler().cacheStats() }.getOrNull()
         val cacheHitRate = cacheStats?.hitRate()?.times(100.0)?.let { "%.2f".format(it) } ?: "0.00"
         val version = VersionAdapterService.currentProfile()
+        val registeredItems = BaikirutoMetrics.registeredItemCount()
+        val registeredScripts = BaikirutoMetrics.registeredScriptCount()
+        val registeredModels = BaikirutoMetrics.registeredModelCount()
+        val registeredDisplays = BaikirutoMetrics.registeredDisplayCount()
+        val registeredGroups = BaikirutoMetrics.registeredGroupCount()
         return listOf(
             "server=${runCatching { Bukkit.getBukkitVersion() }.getOrDefault("unknown")}",
             "scriptEngine=FLUXON_ONLY",
@@ -23,6 +28,11 @@ object BaikirutoDiagnostics {
             "customModelData=${version.supportsCustomModelData}",
             "itemModel=${version.supportsItemModel}",
             "loadedItems=${ItemDefinitionLoader.loadedIds().size}",
+            "registeredItems=$registeredItems",
+            "registeredScripts=$registeredScripts",
+            "registeredModels=$registeredModels",
+            "registeredDisplays=$registeredDisplays",
+            "registeredGroups=$registeredGroups",
             "scriptCacheSize=${cacheStats?.cacheSize ?: 0}",
             "scriptCacheHitRate=${cacheHitRate}%",
             "avgItemBuildMicros=${BaikirutoMetrics.itemBuildAverageMicros()}",
