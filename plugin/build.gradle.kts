@@ -11,13 +11,6 @@ taboolib {
     relocate("org.tabooproject.fluxon", "org.tabooproject.baikiruto.impl.script.fluxon")
 }
 
-dependencies {
-    taboo("org.tabooproject.fluxon:core:1.5.7") { isTransitive = false }
-    taboo("org.tabooproject.fluxon:inst-core:1.5.7") { isTransitive = false }
-    taboo("org.tabooproject.fluxon.plugin:core:1.0.9") { isTransitive = false }
-    taboo("org.tabooproject.fluxon.plugin:platform-bukkit:1.0.9") { isTransitive = false }
-}
-
 val pluginBaseName = rootProject.name
 val pluginJar = layout.buildDirectory.file("libs/${pluginBaseName}-${project.version}.jar")
 val buildApiJar = layout.buildDirectory.file("libs/${pluginBaseName}-${project.version}-api.jar")

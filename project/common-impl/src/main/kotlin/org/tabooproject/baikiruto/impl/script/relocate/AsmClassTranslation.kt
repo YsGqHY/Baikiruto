@@ -19,7 +19,7 @@ import taboolib.library.reflex.Reflex.Companion.invokeMethod
  */
 object AsmClassTranslation {
 
-    const val PACKAGE_BEFORE = "cc/polarastrum/aiyatsbus/module/script/fluxon/core"
+    const val PACKAGE_BEFORE = "org/tabooproject/baikiruto/impl/script/fluxon"
     const val PACKAGE_AFTER = "org/tabooproject/fluxon"
 
     @Synchronized

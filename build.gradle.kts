@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     java
-    id("io.izzel.taboolib") version "2.0.30" apply false
+    id("io.izzel.taboolib") version "2.0.36" apply false
     id("org.jetbrains.kotlin.jvm") version "1.9.24" apply false
 }
 
@@ -26,8 +26,11 @@ subprojects {
             install(Database, DatabasePlayer)
             install(CommandHelper)
             install(Metrics)
+
+            forceDownloadInDev = false
+            enableLegacyDependencyResolver = true
         }
-        version { taboolib = "6.2.4-99fb800" }
+        version { taboolib = "6.2.4-3d34097" }
     }
 
     // 仓库
