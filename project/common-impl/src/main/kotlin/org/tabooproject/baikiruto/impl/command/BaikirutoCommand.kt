@@ -15,6 +15,7 @@ import taboolib.common.platform.command.subCommand
 import taboolib.common.platform.command.suggestUncheck
 import taboolib.expansion.createHelper
 import taboolib.platform.util.isAir
+import taboolib.platform.util.sendLang
 
 @CommandHeader(
     name = "baikiruto",
@@ -34,22 +35,34 @@ object BaikirutoCommand {
     val reload = subCommand {
         literal("items") {
             exec<CommandSender> {
-                sender.sendMessage(BaikirutoReloader.reloadItems())
+                val r = BaikirutoReloader.reloadItems()
+                if (r.onlineUpdateEnabled) {
+                    sender.sendLang("log-reload-items", r.items, r.updatedPlayers)
+                } else {
+                    sender.sendLang("log-reload-items-no-update", r.items)
+                }
             }
         }
         literal("scripts") {
             exec<CommandSender> {
-                sender.sendMessage(BaikirutoReloader.reloadScripts())
+                val r = BaikirutoReloader.reloadScripts()
+                sender.sendLang("log-reload-scripts", r.cacheSize, r.totalCompilations)
             }
         }
         literal("debug") {
             exec<CommandSender> {
-                sender.sendMessage("Reload debug snapshot:")
+                sender.sendLang("command-reload-debug-header")
+                // Diagnostics 输出为 key=value 技术格式，有意不国际化
                 BaikirutoDiagnostics.lines().forEach(sender::sendMessage)
             }
         }
         exec<CommandSender> {
-            sender.sendMessage(BaikirutoReloader.reloadAll())
+            val r = BaikirutoReloader.reloadAll()
+            if (r.onlineUpdateEnabled) {
+                sender.sendLang("log-reload-all", r.items, r.updatedPlayers, r.costMs)
+            } else {
+                sender.sendLang("log-reload-all-no-update", r.items, r.costMs)
+            }
         }
     }
 
@@ -173,9 +186,9 @@ object BaikirutoCommand {
     @CommandBody(permission = "baikiruto.command.debug")
     val selfcheck = subCommand {
         exec<CommandSender> {
-            sender.sendMessage("Baikiruto selfcheck:")
+            sender.sendLang("command-selfcheck-header")
             BaikirutoDiagnostics.lines().forEach(sender::sendMessage)
-            sender.sendMessage("Registered items: ${ItemDefinitionLoader.loadedIds().joinToString(", ")}")
+            sender.sendLang("command-selfcheck-items", ItemDefinitionLoader.loadedIds().joinToString(", "))
         }
     }
 
@@ -191,16 +204,16 @@ object BaikirutoCommand {
             )
         )
         if (result == null) {
-            sender.sendMessage("Build failed: item '$itemId' is not registered.")
+            sender.sendLang("command-build-failed", itemId)
             return
         }
-        sender.sendMessage("Build success: $itemId -> ${result.type} x${result.amount}")
+        sender.sendLang("command-build-success", itemId, result.type, result.amount)
     }
 
     private fun executeList(sender: CommandSender, keyword: String?) {
         val allItems = Baikiruto.api().getItemRegistry().keys().sorted()
         if (allItems.isEmpty()) {
-            sender.sendMessage("No managed items loaded.")
+            sender.sendLang("command-list-empty")
             return
         }
         val normalizedKeyword = keyword?.trim()?.takeIf { it.isNotEmpty() }
@@ -210,74 +223,74 @@ object BaikirutoCommand {
             allItems.filter { id -> id.contains(normalizedKeyword, ignoreCase = true) }
         }
         if (filtered.isEmpty()) {
-            sender.sendMessage("No managed item matched keyword '$normalizedKeyword'.")
+            sender.sendLang("command-list-no-match", normalizedKeyword.orEmpty())
             return
         }
-        sender.sendMessage("Managed items (${filtered.size}/${allItems.size}):")
+        sender.sendLang("command-list-header", filtered.size, allItems.size)
         filtered.forEach { id ->
-            sender.sendMessage("- $id")
+            sender.sendLang("command-list-entry", id)
         }
     }
 
     private fun executeRead(sender: CommandSender) {
         val player = sender as? Player
         if (player == null) {
-            sender.sendMessage("Only player can inspect held item stream.")
+            sender.sendLang("command-read-player-only")
             return
         }
         val stream = Baikiruto.api().readItem(player.inventory.itemInMainHand)
         if (stream == null) {
-            sender.sendMessage("Current main-hand item is not managed by Baikiruto.")
+            sender.sendLang("command-read-not-managed")
             return
         }
-        sender.sendMessage("Baikiruto stream:")
-        sender.sendMessage("- id: ${stream.itemId}")
-        sender.sendMessage("- version: ${stream.versionHash}")
-        sender.sendMessage("- metas: ${if (stream.metaHistory.isEmpty()) "[]" else stream.metaHistory.joinToString(", ", "[", "]")}")
-        sender.sendMessage("- signals: ${if (stream.signals.isEmpty()) "[]" else stream.signals.joinToString(", ", "[", "]")}")
+        sender.sendLang("command-read-header")
+        sender.sendLang("command-read-id", stream.itemId)
+        sender.sendLang("command-read-version", stream.versionHash)
+        sender.sendLang("command-read-metas", if (stream.metaHistory.isEmpty()) "[]" else stream.metaHistory.joinToString(", ", "[", "]"))
+        sender.sendLang("command-read-signals", if (stream.signals.isEmpty()) "[]" else stream.signals.joinToString(", ", "[", "]"))
         if (stream.runtimeData.isEmpty()) {
-            sender.sendMessage("- runtimeData: {}")
+            sender.sendLang("command-read-runtime-empty")
             return
         }
-        sender.sendMessage("- runtimeData:")
+        sender.sendLang("command-read-runtime-header")
         stream.runtimeData.entries.sortedBy { it.key }.forEach { (key, value) ->
-            sender.sendMessage("  - $key: $value")
+            sender.sendLang("command-read-runtime-entry", key, value.toString())
         }
     }
 
     private fun executeUpdate(sender: CommandSender) {
         val player = sender as? Player
         if (player == null) {
-            sender.sendMessage("Only player can run inventory update check.")
+            sender.sendLang("command-update-player-only")
             return
         }
         val updated = Baikiruto.api().getItemUpdater().checkUpdate(player, player.inventory)
-        sender.sendMessage("Inventory update check complete. updated=$updated")
+        sender.sendLang("command-update-complete", updated)
     }
 
     private fun executeSerialize(sender: CommandSender) {
         val player = sender as? Player
         if (player == null) {
-            sender.sendMessage("Only player can serialize held item.")
+            sender.sendLang("command-serialize-player-only")
             return
         }
         val item = player.inventory.itemInMainHand
         if (item.isAir()) {
-            sender.sendMessage("Main-hand item is empty.")
+            sender.sendLang("command-serialize-empty-hand")
             return
         }
         val serialized = Baikiruto.api().getItemSerializer().serialize(item)
-        sender.sendMessage("Serialized item:")
-        sender.sendMessage("- itemId: ${serialized.itemId}")
-        sender.sendMessage("- amount: ${serialized.amount}")
-        sender.sendMessage("- version: ${serialized.versionHash}")
-        sender.sendMessage("- metas: ${if (serialized.metaHistory.isEmpty()) "[]" else serialized.metaHistory.joinToString(", ", "[", "]")}")
+        sender.sendLang("command-serialize-header")
+        sender.sendLang("command-serialize-item-id", serialized.itemId)
+        sender.sendLang("command-serialize-amount", serialized.amount)
+        sender.sendLang("command-serialize-version", serialized.versionHash)
+        sender.sendLang("command-serialize-metas", if (serialized.metaHistory.isEmpty()) "[]" else serialized.metaHistory.joinToString(", ", "[", "]"))
         if (serialized.runtimeData.isEmpty()) {
-            sender.sendMessage("- runtimeData: {}")
+            sender.sendLang("command-serialize-runtime-empty")
         } else {
-            sender.sendMessage("- runtimeData:")
+            sender.sendLang("command-serialize-runtime-header")
             serialized.runtimeData.entries.sortedBy { it.key }.forEach { (key, value) ->
-                sender.sendMessage("  - $key: $value")
+                sender.sendLang("command-serialize-runtime-entry", key, value.toString())
             }
         }
         val encoded = serialized.itemStackData
@@ -286,28 +299,28 @@ object BaikirutoCommand {
         } else {
             encoded
         }
-        sender.sendMessage("- itemStackData(length=${encoded.length}): $preview")
+        sender.sendLang("command-serialize-stack-data", encoded.length, preview)
     }
 
     private fun executeRebuild(sender: CommandSender) {
         val player = sender as? Player
         if (player == null) {
-            sender.sendMessage("Only player can rebuild held item.")
+            sender.sendLang("command-rebuild-player-only")
             return
         }
         val current = player.inventory.itemInMainHand
         if (current.isAir()) {
-            sender.sendMessage("Main-hand item is empty.")
+            sender.sendLang("command-rebuild-empty-hand")
             return
         }
         val stream = Baikiruto.api().readItem(current)
         if (stream == null) {
-            sender.sendMessage("Current main-hand item is not managed by Baikiruto.")
+            sender.sendLang("command-rebuild-not-managed")
             return
         }
         val item = Baikiruto.api().getItem(stream.itemId)
         if (item == null) {
-            sender.sendMessage("Managed item '${stream.itemId}' is no longer registered.")
+            sender.sendLang("command-rebuild-not-registered", stream.itemId)
             return
         }
         val rebuilt = item.build(
@@ -326,25 +339,25 @@ object BaikirutoCommand {
         }
         player.inventory.setItemInMainHand(rebuiltStack)
         player.updateInventory()
-        sender.sendMessage("Rebuild complete: ${stream.itemId} ${stream.versionHash} -> ${rebuilt.versionHash}")
+        sender.sendLang("command-rebuild-complete", stream.itemId, stream.versionHash, rebuilt.versionHash)
     }
 
     private fun executeMenu(sender: CommandSender, groupId: String?) {
         val player = sender as? Player
         if (player == null) {
-            sender.sendMessage("Only player can open group menu.")
+            sender.sendLang("command-menu-player-only")
             return
         }
         val opened = BaikirutoGroupMenu.open(player, groupId)
         if (!opened) {
-            sender.sendMessage("Group '${groupId?.trim()}' does not exist.")
+            sender.sendLang("command-menu-not-found", groupId?.trim().orEmpty())
         }
     }
 
     private fun executeGiveSelf(sender: CommandSender, itemId: String, amount: Int) {
         val player = sender as? Player
         if (player == null) {
-            sender.sendMessage("Only player can receive managed item.")
+            sender.sendLang("command-give-player-only")
             return
         }
         executeGive(sender, player, itemId, amount)
@@ -364,7 +377,7 @@ object BaikirutoCommand {
         val amountCandidate = normalized.toIntOrNull()
         if (amountCandidate != null) {
             if (!amountRaw.isNullOrBlank()) {
-                sender.sendMessage("Usage: /baikiruto give <itemId> [player] [amount]")
+                sender.sendLang("command-give-usage")
                 return
             }
             executeGiveSelf(sender, itemId, amountCandidate)
@@ -372,7 +385,7 @@ object BaikirutoCommand {
         }
         val target = Bukkit.getPlayerExact(normalized) ?: Bukkit.getPlayer(normalized)
         if (target == null) {
-            sender.sendMessage("Player '$normalized' is not online.")
+            sender.sendLang("command-give-player-offline", normalized)
             return
         }
         val amount = amountRaw?.toIntOrNull() ?: 1
@@ -381,7 +394,7 @@ object BaikirutoCommand {
 
     private fun executeGive(sender: CommandSender, target: Player, itemId: String, amount: Int) {
         if (Baikiruto.api().getItem(itemId) == null) {
-            sender.sendMessage("Item '$itemId' is not registered.")
+            sender.sendLang("command-give-not-registered", itemId)
             return
         }
         val success = Baikiruto.api().getItemManager().giveItem(
@@ -395,9 +408,9 @@ object BaikirutoCommand {
             )
         )
         if (!success) {
-            sender.sendMessage("Give cancelled by listener.")
+            sender.sendLang("command-give-cancelled")
             return
         }
-        sender.sendMessage("Given ${amount.coerceAtLeast(1)}x $itemId to ${target.name}.")
+        sender.sendLang("command-give-success", amount.coerceAtLeast(1), itemId, target.name)
     }
 }

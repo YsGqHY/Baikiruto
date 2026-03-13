@@ -5,46 +5,57 @@ import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import org.tabooproject.baikiruto.impl.item.ItemDefinitionLoader
 import org.tabooproject.baikiruto.impl.item.ItemScriptPreheatService
-import taboolib.common.platform.function.info
+import taboolib.common.platform.function.console
+import taboolib.module.lang.sendLang
 
 object BaikirutoReloader {
 
-    fun reloadAll(): String {
+    data class ReloadResult(
+        val items: Int,
+        val updatedPlayers: Int,
+        val costMs: Long = 0,
+        val onlineUpdateEnabled: Boolean = BaikirutoSettings.reloadOnlineUpdateEnabled
+    )
+
+    data class ScriptReloadResult(
+        val cacheSize: Int,
+        val totalCompilations: Long
+    )
+
+    fun reloadAll(): ReloadResult {
         val startAt = System.currentTimeMillis()
         BaikirutoSettings.conf.reload()
         val result = reloadItemsInternal("reload-all")
         ItemScriptPreheatService.preheatRegistry()
         val cost = System.currentTimeMillis() - startAt
-        return if (BaikirutoSettings.reloadOnlineUpdateEnabled) {
-            "Reload finished: items=${result.items}, onlineUpdated=${result.updatedPlayers}, cost=${cost}ms"
-        } else {
-            "Reload finished: items=${result.items}, cost=${cost}ms"
-        }
+        return ReloadResult(
+            items = result.items,
+            updatedPlayers = result.updatedPlayers,
+            costMs = cost
+        )
     }
 
-    fun reloadItems(): String {
-        val result = reloadItemsInternal("reload-items")
-        return if (BaikirutoSettings.reloadOnlineUpdateEnabled) {
-            "Item reload finished: items=${result.items}, onlineUpdated=${result.updatedPlayers}"
-        } else {
-            "Item reload finished: items=${result.items}"
-        }
+    fun reloadItems(): ReloadResult {
+        return reloadItemsInternal("reload-items")
     }
 
     fun reloadItemsFromWatcher(source: String) {
         val result = reloadItemsInternal(source)
-        if (BaikirutoSettings.reloadOnlineUpdateEnabled) {
-            info("[Baikiruto] Watcher reload finished: items=${result.items}, onlineUpdated=${result.updatedPlayers}")
+        if (result.onlineUpdateEnabled) {
+            console().sendLang("log-reload-watcher", result.items, result.updatedPlayers)
         } else {
-            info("[Baikiruto] Watcher reload finished: items=${result.items}")
+            console().sendLang("log-reload-watcher-no-update", result.items)
         }
     }
 
-    fun reloadScripts(): String {
+    fun reloadScripts(): ScriptReloadResult {
         ItemDefinitionLoader.loadedIds().forEach { Baikiruto.api().getScriptHandler().invalidateByPrefix(it) }
         ItemScriptPreheatService.preheatRegistry()
         val stats = Baikiruto.api().getScriptHandler().cacheStats()
-        return "Script reload finished: cacheSize=${stats.cacheSize}, totalCompilations=${stats.totalCompilations}"
+        return ScriptReloadResult(
+            cacheSize = stats.cacheSize,
+            totalCompilations = stats.totalCompilations
+        )
     }
 
     private fun reloadItemsInternal(source: String): ReloadResult {
@@ -61,9 +72,4 @@ object BaikirutoReloader {
             Baikiruto.api().getItemUpdater().checkUpdate(player, player.inventory)
         }
     }
-
-    private data class ReloadResult(
-        val items: Int,
-        val updatedPlayers: Int
-    )
 }

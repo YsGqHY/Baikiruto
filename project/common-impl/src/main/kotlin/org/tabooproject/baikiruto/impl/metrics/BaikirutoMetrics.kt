@@ -2,9 +2,9 @@ package org.tabooproject.baikiruto.impl.metrics
 
 import org.tabooproject.baikiruto.core.Baikiruto
 import taboolib.common.platform.Platform
-import taboolib.common.platform.function.info
+import taboolib.common.platform.function.console
 import taboolib.common.platform.function.pluginVersion
-import taboolib.common.platform.function.warning
+import taboolib.module.lang.sendLang
 import taboolib.module.metrics.Metrics
 import taboolib.module.metrics.charts.SingleLineChart
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,10 +35,10 @@ object BaikirutoMetrics {
                 metrics.addCustomChart(SingleLineChart("item_build_avg_micros") { toChartValue(itemBuildAverageMicros()) })
             }.also {
                 bStats = it
-                info("[Baikiruto] bStats metrics enabled (pluginId=$bStatsPluginId).")
+                console().sendLang("log-bstats-enabled", bStatsPluginId)
             }
         }.onFailure { ex ->
-            warning("[Baikiruto] Failed to initialize bStats metrics: ${ex.message}")
+            console().sendLang("log-bstats-failed", ex.message.orEmpty())
         }
     }
 

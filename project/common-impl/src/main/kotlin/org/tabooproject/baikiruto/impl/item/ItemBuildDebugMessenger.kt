@@ -8,6 +8,10 @@ object ItemBuildDebugMessenger {
     private val booleanKeywords = setOf("true", "false", "yes", "no", "on", "off", "null", "~")
     private val numberPattern = Regex("[-+]?\\d+(\\.\\d+)?([eE][-+]?\\d+)?")
 
+    /**
+     * 向玩家发送 YAML 格式的调试数据。
+     * 结构化调试输出，有意不通过 lang 系统国际化。
+     */
     fun send(player: Player, rootKey: String, payload: Map<String, Any?>) {
         format(rootKey, payload).forEach(player::sendMessage)
     }

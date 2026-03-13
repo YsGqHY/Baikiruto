@@ -4,10 +4,11 @@ import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.impl.metrics.BaikirutoMetrics
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
-import taboolib.common.platform.function.info
+import taboolib.common.platform.function.console
 import taboolib.common.platform.function.releaseResourceFile
 import taboolib.common.platform.function.warning
 import taboolib.common.util.unsafeLazy
+import taboolib.module.lang.sendLang
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -23,6 +24,7 @@ object DefaultBaikirutoBooster {
     private val registered = AtomicBoolean(false)
 
     fun startup() {
+        // INIT 阶段 lang 系统可能尚未加载完成，使用 warning() 确保消息可见
         warning("[Baikiruto] Legacy INIT startup bridge invoked, API registration now happens in LOAD.")
     }
 
@@ -34,22 +36,19 @@ object DefaultBaikirutoBooster {
     @Awake(LifeCycle.ENABLE)
     private fun onEnable() {
         releaseResourceFile("config.yml")
-        info("[Baikiruto] ENABLE completed, resources and configuration are available.")
+        console().sendLang("log-booster-enable")
     }
 
     @Awake(LifeCycle.ACTIVE)
     private fun onActive() {
         BaikirutoMetrics.initializeBStats()
-        info(
-            "[Baikiruto] ACTIVE completed, debug=${BaikirutoSettings.debug}, " +
-                "scriptPreheat=${BaikirutoSettings.scriptPreheatEnabled}"
-        )
+        console().sendLang("log-booster-active", BaikirutoSettings.debug, BaikirutoSettings.scriptPreheatEnabled)
     }
 
     private fun registerApi(phase: String) {
         if (registered.compareAndSet(false, true)) {
             Baikiruto.register(api)
-            info("[Baikiruto] API registered in lifecycle phase: $phase")
+            console().sendLang("log-booster-api-registered", phase)
         }
     }
 }

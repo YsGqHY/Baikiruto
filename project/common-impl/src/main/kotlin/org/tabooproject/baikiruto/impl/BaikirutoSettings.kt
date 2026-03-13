@@ -3,10 +3,11 @@ package org.tabooproject.baikiruto.impl
 import org.bukkit.entity.Player
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
-import taboolib.common.platform.function.info
+import taboolib.common.platform.function.console
 import taboolib.module.configuration.Config
 import taboolib.module.configuration.ConfigNode
 import taboolib.module.configuration.Configuration
+import taboolib.module.lang.sendLang
 import java.util.Locale
 
 @ConfigNode(bind = "config.yml")
@@ -104,12 +105,10 @@ object BaikirutoSettings {
     @Awake(LifeCycle.ENABLE)
     private fun init() {
         conf.onReload {
-            info(
-                "[Baikiruto] Config reloaded: debug=$debug, preheat=$scriptPreheatEnabled, " +
-                    "watcherEnabled=$watcherEnabled, reloadOnlineUpdate=$reloadOnlineUpdateEnabled, " +
-                    "hookMythic=$mythicHookEnabled, hookAttributePlus=$attributePlusHookEnabled, " +
-                    "hookHeadDatabase=$headDatabaseHookEnabled, " +
-                    "databaseEnabled=$databaseEnabled"
+            console().sendLang(
+                "log-config-reloaded",
+                debug, scriptPreheatEnabled, watcherEnabled, reloadOnlineUpdateEnabled,
+                mythicHookEnabled, attributePlusHookEnabled, headDatabaseHookEnabled, databaseEnabled
             )
         }
     }

@@ -25,6 +25,7 @@ subprojects {
             install(Basic, Bukkit, BukkitUtil, BukkitNMS, BukkitNMSUtil, BukkitUI, BukkitHook)
             install(Database, DatabasePlayer)
             install(CommandHelper)
+            install(I18n, MinecraftChat)
             install(Metrics)
 
             forceDownloadInDev = false
@@ -47,15 +48,15 @@ subprojects {
     // 编译配置
     java {
         withSourcesJar()
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
     tasks.withType<JavaCompile> {
         options.encoding = "UTF-8"
     }
     tasks.withType<KotlinCompile> {
         kotlinOptions {
-            jvmTarget = "21"
+            jvmTarget = "1.8"
             freeCompilerArgs = listOf("-Xjvm-default=all", "-Xextended-compiler-checks")
         }
     }

@@ -6,7 +6,8 @@ import org.tabooproject.baikiruto.core.version.BaseItemMetaVersionAdapter
 import org.tabooproject.baikiruto.core.version.DataComponentVersionAdapter
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
-import taboolib.common.platform.function.info
+import taboolib.common.platform.function.console
+import taboolib.module.lang.sendLang
 import taboolib.module.nms.MinecraftVersion
 
 object VersionAdapterService {
@@ -66,11 +67,15 @@ object VersionAdapterService {
     @Awake(LifeCycle.ACTIVE)
     private fun onActive() {
         val profile = currentProfile()
-        info(
-            "[Baikiruto] Version features: profile=${profile.profileId}, " +
-                "running=${MinecraftVersion.runningVersion}, versionId=${MinecraftVersion.versionId}, " +
-                "legacyNbt=${profile.legacyNbtStorage}, dataComponent=${profile.dataComponentStorage}, " +
-                "customModelData=${profile.supportsCustomModelData}, itemModel=${profile.supportsItemModel}"
+        console().sendLang(
+            "log-version-features",
+            profile.profileId,
+            MinecraftVersion.runningVersion,
+            MinecraftVersion.versionId,
+            profile.legacyNbtStorage,
+            profile.dataComponentStorage,
+            profile.supportsCustomModelData,
+            profile.supportsItemModel
         )
     }
 

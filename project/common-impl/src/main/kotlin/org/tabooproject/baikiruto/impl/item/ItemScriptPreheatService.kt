@@ -4,7 +4,8 @@ import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import org.tabooproject.baikiruto.impl.script.item.ItemScriptExecutor
-import taboolib.common.platform.function.info
+import taboolib.common.platform.function.console
+import taboolib.module.lang.sendLang
 
 object ItemScriptPreheatService {
 
@@ -19,7 +20,7 @@ object ItemScriptPreheatService {
         }
         val batchSize = BaikirutoSettings.scriptPreheatBatchSize.coerceAtLeast(1)
         items.forEach { ItemScriptExecutor.preheat(it, batchSize) }
-        info("[Baikiruto] Script preheat completed for ${items.size} items.")
+        console().sendLang("log-script-preheat-complete", items.size)
     }
 
     fun preheatRegistry() {

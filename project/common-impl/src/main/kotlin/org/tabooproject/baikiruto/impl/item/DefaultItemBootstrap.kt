@@ -6,7 +6,8 @@ import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.core.item.ItemScriptHooks
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
-import taboolib.common.platform.function.info
+import taboolib.common.platform.function.console
+import taboolib.module.lang.sendLang
 
 object DefaultItemBootstrap {
 
@@ -25,6 +26,7 @@ object DefaultItemBootstrap {
                 template = ItemStack(Material.STONE),
                 versionHashSupplier = { "m0-dev" },
                 scripts = ItemScriptHooks(
+                    // 脚本内嵌消息无法使用 lang 系统，此为 debug 物品的硬编码脚本
                     build = """
                         if (ctx["debug"] == true) {
                             sender?.sendMessage("[Baikiruto] build hook invoked for ${'$'}itemId")
@@ -35,6 +37,6 @@ object DefaultItemBootstrap {
             )
         )
         ItemScriptPreheatService.preheatIfEnabled(listOf(item))
-        info("[Baikiruto] Registered default debug item: $DEBUG_ITEM_ID")
+        console().sendLang("log-debug-item-registered", DEBUG_ITEM_ID)
     }
 }

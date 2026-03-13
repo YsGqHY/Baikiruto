@@ -1,0 +1,150 @@
+# ==============================
+# Baikiruto 语言文件 - 简体中文
+# ==============================
+
+# ========== 命令消息 ==========
+
+# reload 子命令
+command-reload-debug-header: '&7重载调试快照:'
+
+# selfcheck 子命令
+command-selfcheck-header: '&7Baikiruto 自检:'
+command-selfcheck-items: '&7已注册物品: {0}'
+
+# build 子命令
+command-build-failed: '&c构建失败: 物品 &f{0}&c 未注册。'
+command-build-success: '&a构建成功: &f{0} &7-> &f{1} &7x&f{2}'
+
+# list 子命令
+command-list-empty: '&7没有已加载的托管物品。'
+command-list-no-match: '&7没有匹配关键词 &f{0}&7 的托管物品。'
+command-list-header: '&7托管物品 ({0}/{1}):'
+command-list-entry: '&7- &f{0}'
+
+# read 子命令
+command-read-player-only: '&c只有玩家可以检查手持物品流。'
+command-read-not-managed: '&c当前主手物品不受 Baikiruto 管理。'
+command-read-header: '&7Baikiruto 物品流:'
+command-read-id: '&7- id: &f{0}'
+command-read-version: '&7- version: &f{0}'
+command-read-metas: '&7- metas: &f{0}'
+command-read-signals: '&7- signals: &f{0}'
+command-read-runtime-empty: '&7- runtimeData: &f{}'
+command-read-runtime-header: '&7- runtimeData:'
+command-read-runtime-entry: '&7  - &f{0}: &f{1}'
+
+# update 子命令
+command-update-player-only: '&c只有玩家可以执行背包更新检查。'
+command-update-complete: '&a背包更新检查完成。updated=&f{0}'
+
+# serialize 子命令
+command-serialize-player-only: '&c只有玩家可以序列化手持物品。'
+command-serialize-empty-hand: '&c主手物品为空。'
+command-serialize-header: '&7序列化物品:'
+command-serialize-item-id: '&7- itemId: &f{0}'
+command-serialize-amount: '&7- amount: &f{0}'
+command-serialize-version: '&7- version: &f{0}'
+command-serialize-metas: '&7- metas: &f{0}'
+command-serialize-runtime-empty: '&7- runtimeData: &f{}'
+command-serialize-runtime-header: '&7- runtimeData:'
+command-serialize-runtime-entry: '&7  - &f{0}: &f{1}'
+command-serialize-stack-data: '&7- itemStackData(length={0}): &f{1}'
+
+# rebuild 子命令
+command-rebuild-player-only: '&c只有玩家可以重建手持物品。'
+command-rebuild-empty-hand: '&c主手物品为空。'
+command-rebuild-not-managed: '&c当前主手物品不受 Baikiruto 管理。'
+command-rebuild-not-registered: '&c托管物品 &f{0}&c 已不再注册。'
+command-rebuild-complete: '&a重建完成: &f{0} {1} &7-> &f{2}'
+
+# menu 子命令
+command-menu-player-only: '&c只有玩家可以打开分组菜单。'
+command-menu-not-found: '&c分组 &f{0}&c 不存在。'
+
+# give 子命令
+command-give-player-only: '&c只有玩家可以接收托管物品。'
+command-give-usage: '&c用法: /baikiruto give <itemId> [player] [amount]'
+command-give-player-offline: '&c玩家 &f{0}&c 不在线。'
+command-give-not-registered: '&c物品 &f{0}&c 未注册。'
+command-give-cancelled: '&c给予操作被监听器取消。'
+command-give-success: '&a已给予 &f{0}&a x&f{1}&a 给 &f{2}&a。'
+
+# ========== 菜单消息 ==========
+
+menu-give-cancelled: '&c给予 &f{0}&c 被取消。'
+menu-give-success: '&a已给予 &f{0}&a x &f{1}&a。'
+menu-control-previous: '&e上一页'
+menu-control-previous-lore: '&7打开上一页'
+menu-control-next: '&e下一页'
+menu-control-next-lore: '&7打开下一页'
+menu-control-close: '&c关闭'
+menu-control-close-lore: '&7关闭此菜单'
+menu-control-root: '&6根目录'
+menu-control-root-lore: '&7返回根分组'
+menu-control-parent: '&e上级'
+menu-control-parent-lore: '&7返回上级分组'
+menu-title-root: '根目录'
+menu-group-name: '&6分组: &f{0}'
+menu-group-path: '&7路径: &f{0}'
+menu-group-children: '&7子分组: &f{0}'
+menu-group-items: '&7托管物品: &f{0}'
+menu-group-click: '&8点击打开'
+menu-item-id: '&7ID: &f{0}'
+menu-item-group: '&7分组: &f{0}'
+menu-item-give-one: '&e左键: 给予 1 个'
+menu-item-give-stack: '&eShift+左键: 给予 64 个'
+menu-title-format: '&6Baikiruto &7| &f{0} &8({1}/{2})'
+
+# ========== 物品特性消息 ==========
+
+item-unique-deny: '&c此物品属于其他玩家。'
+
+# ========== 控制台日志 ==========
+
+log-reload-all: '&7重载完成: items={0}, onlineUpdated={1}, cost={2}ms'
+log-reload-all-no-update: '&7重载完成: items={0}, cost={1}ms'
+log-reload-items: '&7物品重载完成: items={0}, onlineUpdated={1}'
+log-reload-items-no-update: '&7物品重载完成: items={0}'
+log-reload-watcher: '&7文件监视器重载完成: items={0}, onlineUpdated={1}'
+log-reload-watcher-no-update: '&7文件监视器重载完成: items={0}'
+log-reload-scripts: '&7脚本重载完成: cacheSize={0}, totalCompilations={1}'
+
+log-booster-enable: '&7ENABLE 完成, 资源和配置已可用。'
+log-booster-active: '&7ACTIVE 完成, debug={0}, scriptPreheat={1}'
+log-booster-api-registered: '&7API 已在生命周期阶段注册: {0}'
+
+log-config-reloaded: '&7配置已重载: debug={0}, preheat={1}, watcherEnabled={2}, reloadOnlineUpdate={3}, hookMythic={4}, hookAttributePlus={5}, hookHeadDatabase={6}, databaseEnabled={7}'
+
+log-version-features: '&7版本特性: profile={0}, running={1}, versionId={2}, legacyNbt={3}, dataComponent={4}, customModelData={5}, itemModel={6}'
+
+log-script-handler-registered: '&7脚本处理器已在 LOAD 注册 (engine=Fluxon)。'
+
+log-bstats-enabled: '&7bStats 指标已启用 (pluginId={0})。'
+log-bstats-failed: '&cbStats 指标初始化失败: {0}'
+
+log-watcher-started: '&7文件监视器已启动: {0}'
+log-watcher-reload-failed: '&c文件监视器重载失败: {0}'
+
+log-player-data-bootstrap-failed: '&c玩家数据引导失败: {0}'
+log-player-data-setup-failed: '&c为 {0} 设置数据容器失败: {1}'
+log-player-data-mysql: '&7玩家数据存储已初始化: type=MYSQL, host={0}:{1}, table={2}'
+log-player-data-sqlite: '&7玩家数据存储已初始化: type=SQLITE, file={0}, table={1}'
+
+log-perf-report: '&7perf: avgBuild={0}us, buildCount={1}, scriptCache={2}, hitRate={3}%'
+
+log-script-preheat-complete: '&7脚本预热完成, 共 {0} 个物品。'
+
+log-debug-item-registered: '&7已注册默认调试物品: {0}'
+
+log-slow-build: '&e检测到慢速物品构建: id={0}, cost={1}ms'
+
+log-item-reload-complete: '&7物品从 {0} 重载完成。loadedItems={1}, models={2}, displays={3}, groups={4}'
+log-item-duplicate-id: '&e检测到重复物品 ID, 覆盖先前定义: {0}'
+log-meta-factory-missing: '&e缺少 meta 工厂 &f{0}&e (meta: &f{1}&e), 回退到默认 meta。'
+log-meta-factory-failed: '&c通过工厂 &f{0}&c 创建 meta &f{1}&c 失败: {2}。回退到默认 meta。'
+log-item-file-load-failed: '&c加载物品文件 {0} 失败: {1}'
+log-model-circular: '&e检测到循环模型继承: {0}'
+log-model-missing: '&e缺少模型引用: {0}'
+
+log-modern-module-loaded: '&7module-modern 已加载 (attribute factory + item-model meta factory)。'
+

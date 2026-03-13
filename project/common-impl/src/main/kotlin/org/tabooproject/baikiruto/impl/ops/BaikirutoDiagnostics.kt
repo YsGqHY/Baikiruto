@@ -11,6 +11,10 @@ import taboolib.library.reflex.LazyClass
 
 object BaikirutoDiagnostics {
 
+    /**
+     * 返回诊断信息列表。
+     * 输出为 key=value 技术格式，面向管理员/开发者，有意不通过 lang 系统国际化。
+     */
     fun lines(): List<String> {
         val cacheStats = runCatching { Baikiruto.api().getScriptHandler().cacheStats() }.getOrNull()
         val cacheHitRate = cacheStats?.hitRate()?.times(100.0)?.let { "%.2f".format(it) } ?: "0.00"

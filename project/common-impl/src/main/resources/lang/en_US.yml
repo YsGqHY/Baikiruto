@@ -1,0 +1,150 @@
+# ==============================
+# Baikiruto Language File - English
+# ==============================
+
+# ========== Command Messages ==========
+
+# reload subcommand
+command-reload-debug-header: '&7Reload debug snapshot:'
+
+# selfcheck subcommand
+command-selfcheck-header: '&7Baikiruto selfcheck:'
+command-selfcheck-items: '&7Registered items: {0}'
+
+# build subcommand
+command-build-failed: '&cBuild failed: item &f{0}&c is not registered.'
+command-build-success: '&aBuild success: &f{0} &7-> &f{1} &7x&f{2}'
+
+# list subcommand
+command-list-empty: '&7No managed items loaded.'
+command-list-no-match: '&7No managed item matched keyword &f{0}&7.'
+command-list-header: '&7Managed items ({0}/{1}):'
+command-list-entry: '&7- &f{0}'
+
+# read subcommand
+command-read-player-only: '&cOnly player can inspect held item stream.'
+command-read-not-managed: '&cCurrent main-hand item is not managed by Baikiruto.'
+command-read-header: '&7Baikiruto stream:'
+command-read-id: '&7- id: &f{0}'
+command-read-version: '&7- version: &f{0}'
+command-read-metas: '&7- metas: &f{0}'
+command-read-signals: '&7- signals: &f{0}'
+command-read-runtime-empty: '&7- runtimeData: &f{}'
+command-read-runtime-header: '&7- runtimeData:'
+command-read-runtime-entry: '&7  - &f{0}: &f{1}'
+
+# update subcommand
+command-update-player-only: '&cOnly player can run inventory update check.'
+command-update-complete: '&aInventory update check complete. updated=&f{0}'
+
+# serialize subcommand
+command-serialize-player-only: '&cOnly player can serialize held item.'
+command-serialize-empty-hand: '&cMain-hand item is empty.'
+command-serialize-header: '&7Serialized item:'
+command-serialize-item-id: '&7- itemId: &f{0}'
+command-serialize-amount: '&7- amount: &f{0}'
+command-serialize-version: '&7- version: &f{0}'
+command-serialize-metas: '&7- metas: &f{0}'
+command-serialize-runtime-empty: '&7- runtimeData: &f{}'
+command-serialize-runtime-header: '&7- runtimeData:'
+command-serialize-runtime-entry: '&7  - &f{0}: &f{1}'
+command-serialize-stack-data: '&7- itemStackData(length={0}): &f{1}'
+
+# rebuild subcommand
+command-rebuild-player-only: '&cOnly player can rebuild held item.'
+command-rebuild-empty-hand: '&cMain-hand item is empty.'
+command-rebuild-not-managed: '&cCurrent main-hand item is not managed by Baikiruto.'
+command-rebuild-not-registered: '&cManaged item &f{0}&c is no longer registered.'
+command-rebuild-complete: '&aRebuild complete: &f{0} {1} &7-> &f{2}'
+
+# menu subcommand
+command-menu-player-only: '&cOnly player can open group menu.'
+command-menu-not-found: '&cGroup &f{0}&c does not exist.'
+
+# give subcommand
+command-give-player-only: '&cOnly player can receive managed item.'
+command-give-usage: '&cUsage: /baikiruto give <itemId> [player] [amount]'
+command-give-player-offline: '&cPlayer &f{0}&c is not online.'
+command-give-not-registered: '&cItem &f{0}&c is not registered.'
+command-give-cancelled: '&cGive cancelled by listener.'
+command-give-success: '&aGiven &f{0}&a x&f{1}&a to &f{2}&a.'
+
+# ========== Menu Messages ==========
+
+menu-give-cancelled: '&cGive cancelled for &f{0}&c.'
+menu-give-success: '&aGiven &f{0}&a x &f{1}&a.'
+menu-control-previous: '&ePrevious'
+menu-control-previous-lore: '&7Open previous page'
+menu-control-next: '&eNext'
+menu-control-next-lore: '&7Open next page'
+menu-control-close: '&cClose'
+menu-control-close-lore: '&7Close this menu'
+menu-control-root: '&6Root'
+menu-control-root-lore: '&7Back to root groups'
+menu-control-parent: '&eParent'
+menu-control-parent-lore: '&7Back to parent group'
+menu-title-root: 'Root'
+menu-group-name: '&6Group: &f{0}'
+menu-group-path: '&7Path: &f{0}'
+menu-group-children: '&7Child groups: &f{0}'
+menu-group-items: '&7Managed items: &f{0}'
+menu-group-click: '&8Click to open'
+menu-item-id: '&7ID: &f{0}'
+menu-item-group: '&7Group: &f{0}'
+menu-item-give-one: '&eLeft click: give 1'
+menu-item-give-stack: '&eShift+left: give 64'
+menu-title-format: '&6Baikiruto &7| &f{0} &8({1}/{2})'
+
+# ========== Item Feature Messages ==========
+
+item-unique-deny: '&cThis item belongs to another player.'
+
+# ========== Console Logs ==========
+
+log-reload-all: '&7Reload finished: items={0}, onlineUpdated={1}, cost={2}ms'
+log-reload-all-no-update: '&7Reload finished: items={0}, cost={1}ms'
+log-reload-items: '&7Item reload finished: items={0}, onlineUpdated={1}'
+log-reload-items-no-update: '&7Item reload finished: items={0}'
+log-reload-watcher: '&7Watcher reload finished: items={0}, onlineUpdated={1}'
+log-reload-watcher-no-update: '&7Watcher reload finished: items={0}'
+log-reload-scripts: '&7Script reload finished: cacheSize={0}, totalCompilations={1}'
+
+log-booster-enable: '&7ENABLE completed, resources and configuration are available.'
+log-booster-active: '&7ACTIVE completed, debug={0}, scriptPreheat={1}'
+log-booster-api-registered: '&7API registered in lifecycle phase: {0}'
+
+log-config-reloaded: '&7Config reloaded: debug={0}, preheat={1}, watcherEnabled={2}, reloadOnlineUpdate={3}, hookMythic={4}, hookAttributePlus={5}, hookHeadDatabase={6}, databaseEnabled={7}'
+
+log-version-features: '&7Version features: profile={0}, running={1}, versionId={2}, legacyNbt={3}, dataComponent={4}, customModelData={5}, itemModel={6}'
+
+log-script-handler-registered: '&7Script handler registered in LOAD (engine=Fluxon).'
+
+log-bstats-enabled: '&7bStats metrics enabled (pluginId={0}).'
+log-bstats-failed: '&cFailed to initialize bStats metrics: {0}'
+
+log-watcher-started: '&7File watcher started at {0}'
+log-watcher-reload-failed: '&cFile watcher reload failed: {0}'
+
+log-player-data-bootstrap-failed: '&cPlayer data bootstrap failed: {0}'
+log-player-data-setup-failed: '&cFailed to setup data container for {0}: {1}'
+log-player-data-mysql: '&7Player data storage initialized: type=MYSQL, host={0}:{1}, table={2}'
+log-player-data-sqlite: '&7Player data storage initialized: type=SQLITE, file={0}, table={1}'
+
+log-perf-report: '&7perf: avgBuild={0}us, buildCount={1}, scriptCache={2}, hitRate={3}%'
+
+log-script-preheat-complete: '&7Script preheat completed for {0} items.'
+
+log-debug-item-registered: '&7Registered default debug item: {0}'
+
+log-slow-build: '&eSlow item build detected: id={0}, cost={1}ms'
+
+log-item-reload-complete: '&7Item reload from {0} completed. loadedItems={1}, models={2}, displays={3}, groups={4}'
+log-item-duplicate-id: '&eDuplicate item id detected, overriding previous definition: {0}'
+log-meta-factory-missing: '&eMissing meta factory &f{0}&e for meta &f{1}&e, fallback to default meta.'
+log-meta-factory-failed: '&cFailed to create meta &f{0}&c by factory &f{1}&c: {2}. Fallback to default meta.'
+log-item-file-load-failed: '&cFailed to load item file {0}: {1}'
+log-model-circular: '&eCircular model inheritance detected: {0}'
+log-model-missing: '&eMissing model reference: {0}'
+
+log-modern-module-loaded: '&7module-modern loaded (attribute factory + item-model meta factory).'
+

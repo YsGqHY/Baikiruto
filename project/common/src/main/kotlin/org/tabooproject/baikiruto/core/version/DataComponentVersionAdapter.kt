@@ -74,7 +74,7 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
                     else -> applyNormalizedComponent(wrapper, componentKey, value)
                 }
             } catch (ex: Exception) {
-                warning("Failed to apply component $componentKey: ${ex.message}")
+                warning("[Baikiruto] Failed to apply component $componentKey: ${ex.message}")
             }
         }
     }

@@ -60,6 +60,10 @@ object ItemUniqueFeature {
         )
     }
 
+    /**
+     * 获取拒绝消息。当前 ItemActionListener 已改为直接使用 sendLang("item-unique-deny")，
+     * 此方法保留用于第三方调用兼容，返回的是配置中的原始文本（非 lang key）。
+     */
     fun denyMessage(stream: ItemStream): String {
         return stream.getRuntimeData(KEY_DENY)?.toString()?.takeIf { it.isNotBlank() }
             ?: "&cThis item belongs to another player."

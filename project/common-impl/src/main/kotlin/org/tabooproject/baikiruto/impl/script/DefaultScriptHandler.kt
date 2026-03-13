@@ -8,7 +8,8 @@ import org.tabooproject.baikiruto.impl.script.handler.FluxonHandler
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
 import taboolib.common.platform.PlatformFactory
-import taboolib.common.platform.function.info
+import taboolib.common.platform.function.console
+import taboolib.module.lang.sendLang
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -59,7 +60,7 @@ class DefaultScriptHandler : BaikirutoScriptHandler {
         fun init() {
             if (registered.compareAndSet(false, true)) {
                 PlatformFactory.registerAPI<BaikirutoScriptHandler>(DefaultScriptHandler())
-                info("[Baikiruto] Script handler registered in LOAD (engine=Fluxon).")
+                console().sendLang("log-script-handler-registered")
             }
         }
     }

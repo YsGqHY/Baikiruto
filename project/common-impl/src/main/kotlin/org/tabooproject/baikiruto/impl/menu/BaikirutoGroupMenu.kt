@@ -13,6 +13,8 @@ import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemGroup
 import taboolib.common.platform.event.SubscribeEvent
+import taboolib.platform.util.asLangText
+import taboolib.platform.util.sendLang
 
 object BaikirutoGroupMenu {
 
@@ -24,7 +26,7 @@ object BaikirutoGroupMenu {
     private const val SLOT_NEXT = 53
 
     fun open(player: Player, groupId: String? = null, page: Int = 0): Boolean {
-        val state = buildState(groupId) ?: return false
+        val state = buildState(player, groupId) ?: return false
         val totalPages = ((state.entries.size + PAGE_SIZE - 1) / PAGE_SIZE).coerceAtLeast(1)
         val pageIndex = page.coerceIn(0, totalPages - 1)
         val holder = GroupMenuHolder(
@@ -33,10 +35,10 @@ object BaikirutoGroupMenu {
             page = pageIndex,
             totalPages = totalPages
         )
-        val title = buildTitle(state.title, pageIndex, totalPages)
+        val title = buildTitle(player, state.title, pageIndex, totalPages)
         val inventory = Bukkit.createInventory(holder, 54, title)
         holder.backingInventory = inventory
-        fillPage(holder, state.entries, pageIndex)
+        fillPage(player, holder, state.entries, pageIndex)
         player.openInventory(inventory)
         return true
     }
@@ -72,9 +74,9 @@ object BaikirutoGroupMenu {
                     )
                 )
                 if (!success) {
-                    player.sendMessage(color("&cGive cancelled for &f${action.itemId}&c."))
+                    player.sendLang("menu-give-cancelled", action.itemId)
                 } else {
-                    player.sendMessage(color("&aGiven &f$amount&a x &f${action.itemId}&a."))
+                    player.sendLang("menu-give-success", amount, action.itemId)
                 }
             }
             MenuAction.Close -> player.closeInventory()
@@ -93,40 +95,75 @@ object BaikirutoGroupMenu {
         }
     }
 
-    private fun fillPage(holder: GroupMenuHolder, entries: List<MenuEntry>, page: Int) {
+    private fun fillPage(player: Player, holder: GroupMenuHolder, entries: List<MenuEntry>, page: Int) {
         holder.actions.clear()
         val start = page * PAGE_SIZE
         entries.drop(start).take(PAGE_SIZE).forEachIndexed { index, entry ->
             when (entry) {
                 is MenuEntry.GroupEntry -> {
-                    holder.backingInventory.setItem(index, renderGroupIcon(entry.group))
+                    holder.backingInventory.setItem(index, renderGroupIcon(player, entry.group))
                     holder.actions[index] = MenuAction.OpenGroup(entry.group.id)
                 }
                 is MenuEntry.ItemEntry -> {
-                    holder.backingInventory.setItem(index, renderItemIcon(entry.item))
+                    holder.backingInventory.setItem(index, renderItemIcon(player, entry.item))
                     holder.actions[index] = MenuAction.GiveItem(entry.item.id)
                 }
             }
         }
         if (page > 0) {
-            holder.backingInventory.setItem(SLOT_PREV, controlIcon(Material.ARROW, "&ePrevious", listOf("&7Open previous page")))
+            holder.backingInventory.setItem(
+                SLOT_PREV,
+                controlIcon(
+                    Material.ARROW,
+                    player.asLangText("menu-control-previous"),
+                    listOf(player.asLangText("menu-control-previous-lore"))
+                )
+            )
             holder.actions[SLOT_PREV] = MenuAction.OpenPage(page - 1)
         }
         if (page < holder.totalPages - 1) {
-            holder.backingInventory.setItem(SLOT_NEXT, controlIcon(Material.ARROW, "&eNext", listOf("&7Open next page")))
+            holder.backingInventory.setItem(
+                SLOT_NEXT,
+                controlIcon(
+                    Material.ARROW,
+                    player.asLangText("menu-control-next"),
+                    listOf(player.asLangText("menu-control-next-lore"))
+                )
+            )
             holder.actions[SLOT_NEXT] = MenuAction.OpenPage(page + 1)
         }
-        holder.backingInventory.setItem(SLOT_CLOSE, controlIcon(Material.BARRIER, "&cClose", listOf("&7Close this menu")))
+        holder.backingInventory.setItem(
+            SLOT_CLOSE,
+            controlIcon(
+                Material.BARRIER,
+                player.asLangText("menu-control-close"),
+                listOf(player.asLangText("menu-control-close-lore"))
+            )
+        )
         holder.actions[SLOT_CLOSE] = MenuAction.Close
-        holder.backingInventory.setItem(SLOT_ROOT, controlIcon(Material.COMPASS, "&6Root", listOf("&7Back to root groups")))
+        holder.backingInventory.setItem(
+            SLOT_ROOT,
+            controlIcon(
+                Material.COMPASS,
+                player.asLangText("menu-control-root"),
+                listOf(player.asLangText("menu-control-root-lore"))
+            )
+        )
         holder.actions[SLOT_ROOT] = MenuAction.OpenRoot
         if (!holder.parentGroupId.isNullOrBlank()) {
-            holder.backingInventory.setItem(SLOT_BACK, controlIcon(Material.CHEST, "&eParent", listOf("&7Back to parent group")))
+            holder.backingInventory.setItem(
+                SLOT_BACK,
+                controlIcon(
+                    Material.CHEST,
+                    player.asLangText("menu-control-parent"),
+                    listOf(player.asLangText("menu-control-parent-lore"))
+                )
+            )
             holder.actions[SLOT_BACK] = MenuAction.OpenParent
         }
     }
 
-    private fun buildState(groupId: String?): MenuState? {
+    private fun buildState(player: Player, groupId: String?): MenuState? {
         val api = Baikiruto.api()
         val groups = api.getGroupRegistry().values()
             .sortedWith(compareByDescending<ItemGroup> { it.priority }.thenBy { it.path }.thenBy { it.id })
@@ -138,7 +175,7 @@ object BaikirutoGroupMenu {
             return MenuState(
                 groupId = null,
                 parentGroupId = null,
-                title = "Root",
+                title = player.asLangText("menu-title-root"),
                 entries = buildEntries(rootGroups, rootItems)
             )
         }
@@ -164,23 +201,23 @@ object BaikirutoGroupMenu {
         return entries
     }
 
-    private fun renderGroupIcon(group: ItemGroup): ItemStack {
+    private fun renderGroupIcon(player: Player, group: ItemGroup): ItemStack {
         val icon = resolveIcon(group.icon, Material.CHEST)
         val managedItems = Baikiruto.api().getItemRegistry().values().count { equalsId(it.groupId, group.id) }
         val childGroups = Baikiruto.api().getGroupRegistry().values().count { equalsId(it.parentId, group.id) }
         return decorate(
             icon,
-            "&6Group: &f${group.id}",
+            player.asLangText("menu-group-name", group.id),
             listOf(
-                "&7Path: &f${group.path}",
-                "&7Child groups: &f$childGroups",
-                "&7Managed items: &f$managedItems",
-                "&8Click to open"
+                player.asLangText("menu-group-path", group.path),
+                player.asLangText("menu-group-children", childGroups),
+                player.asLangText("menu-group-items", managedItems),
+                player.asLangText("menu-group-click")
             )
         )
     }
 
-    private fun renderItemIcon(item: Item): ItemStack {
+    private fun renderItemIcon(player: Player, item: Item): ItemStack {
         val preview = Baikiruto.api().buildItem(
             itemId = item.id,
             context = mapOf(
@@ -193,10 +230,10 @@ object BaikirutoGroupMenu {
             preview,
             display,
             listOf(
-                "&7ID: &f${item.id}",
-                "&7Group: &f${item.groupId ?: "root"}",
-                "&eLeft click: give 1",
-                "&eShift+left: give 64"
+                player.asLangText("menu-item-id", item.id),
+                player.asLangText("menu-item-group", item.groupId ?: "root"),
+                player.asLangText("menu-item-give-one"),
+                player.asLangText("menu-item-give-stack")
             )
         )
     }
@@ -231,8 +268,8 @@ object BaikirutoGroupMenu {
         return item
     }
 
-    private fun buildTitle(group: String, page: Int, totalPages: Int): String {
-        val raw = "&6Baikiruto &7| &f$group &8(${page + 1}/$totalPages)"
+    private fun buildTitle(player: Player, group: String, page: Int, totalPages: Int): String {
+        val raw = player.asLangText("menu-title-format", group, page + 1, totalPages)
         return color(trimTitle(raw))
     }
 

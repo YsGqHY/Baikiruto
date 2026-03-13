@@ -3,11 +3,10 @@ package org.tabooproject.baikiruto.impl.ops
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
+import taboolib.common.platform.function.console
 import taboolib.common.platform.function.getDataFolder
-import taboolib.common.platform.function.info
 import taboolib.common.platform.function.submit
-import taboolib.common.platform.function.warning
-import taboolib.platform.util.submit
+import taboolib.module.lang.sendLang
 import java.io.File
 import java.nio.file.FileSystems
 import java.nio.file.Path
@@ -46,7 +45,7 @@ object BaikirutoFileWatcher {
             isDaemon = true
             start()
         }
-        info("[Baikiruto] File watcher started at $watchPath")
+        console().sendLang("log-watcher-started", watchPath)
     }
 
     @Awake(LifeCycle.DISABLE)
@@ -83,7 +82,7 @@ object BaikirutoFileWatcher {
             try {
                 BaikirutoReloader.reloadItemsFromWatcher(source)
             } catch (ex: Throwable) {
-                warning("[Baikiruto] File watcher reload failed: ${ex.message}")
+                console().sendLang("log-watcher-reload-failed", ex.message.orEmpty())
             } finally {
                 reloadQueued.set(false)
             }

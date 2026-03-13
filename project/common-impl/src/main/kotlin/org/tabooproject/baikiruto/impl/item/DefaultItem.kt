@@ -14,7 +14,8 @@ import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import org.tabooproject.baikiruto.impl.log.BaikirutoLog
 import org.tabooproject.baikiruto.impl.metrics.BaikirutoMetrics
 import org.tabooproject.baikiruto.impl.script.item.ItemScriptExecutor
-import taboolib.common.platform.function.warning
+import taboolib.common.platform.function.console
+import taboolib.module.lang.sendLang
 
 class DefaultItem(
     override val id: String,
@@ -100,7 +101,7 @@ class DefaultItem(
         if (BaikirutoSettings.performanceLogEnabled) {
             val costMillis = costNanos / 1_000_000L
             if (costMillis >= BaikirutoSettings.slowBuildMillis) {
-                warning("[Baikiruto] Slow item build detected: id=$id, cost=${costMillis}ms")
+                console().sendLang("log-slow-build", id, costMillis)
             }
         }
         return stream

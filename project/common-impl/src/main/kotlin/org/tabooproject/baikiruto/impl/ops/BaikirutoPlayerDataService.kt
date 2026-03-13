@@ -9,13 +9,13 @@ import taboolib.common.io.newFile
 import taboolib.common.platform.Awake
 import taboolib.common.platform.event.SubscribeEvent
 import taboolib.common.platform.function.adaptPlayer
+import taboolib.common.platform.function.console
 import taboolib.common.platform.function.getDataFolder
-import taboolib.common.platform.function.info
 import taboolib.common.platform.function.pluginId
-import taboolib.common.platform.function.warning
 import taboolib.expansion.releaseDataContainer
 import taboolib.expansion.setupDataContainer
 import taboolib.expansion.setupPlayerDatabase
+import taboolib.module.lang.sendLang
 import java.io.File
 
 object BaikirutoPlayerDataService {
@@ -34,7 +34,7 @@ object BaikirutoPlayerDataService {
             setupOnlinePlayers()
             true
         }.onFailure {
-            warning("[Baikiruto] Player data bootstrap failed: ${it.message}")
+            console().sendLang("log-player-data-bootstrap-failed", it.message.orEmpty())
         }.getOrDefault(false)
     }
 
@@ -46,7 +46,7 @@ object BaikirutoPlayerDataService {
         runCatching {
             adaptPlayer(event.player).setupDataContainer(BaikirutoSettings.databaseUsernameMode)
         }.onFailure {
-            warning("[Baikiruto] Failed to setup data container for ${event.player.name}: ${it.message}")
+            console().sendLang("log-player-data-setup-failed", event.player.name, it.message.orEmpty())
         }
     }
 
@@ -71,15 +71,15 @@ object BaikirutoPlayerDataService {
                 database = BaikirutoSettings.databaseName,
                 table = tableName
             )
-            info(
-                "[Baikiruto] Player data storage initialized: type=MYSQL, " +
-                    "host=${BaikirutoSettings.databaseHost}:${BaikirutoSettings.databasePort}, table=$tableName"
+            console().sendLang(
+                "log-player-data-mysql",
+                BaikirutoSettings.databaseHost, BaikirutoSettings.databasePort, tableName
             )
             return
         }
         val file = resolveSqliteFile()
         setupPlayerDatabase(file, tableName)
-        info("[Baikiruto] Player data storage initialized: type=SQLITE, file=${file.name}, table=$tableName")
+        console().sendLang("log-player-data-sqlite", file.name, tableName)
     }
 
     private fun setupOnlinePlayers() {

@@ -3,6 +3,11 @@ package org.tabooproject.baikiruto.impl.log
 import taboolib.common.platform.function.severe
 import taboolib.common.platform.function.warning
 
+/**
+ * 错误日志工具。
+ * 这些方法输出到服务器控制台日志，保留原生日志级别（SEVERE/WARNING）以便日志聚合工具过滤。
+ * 有意不使用 lang 系统——错误诊断信息需要固定格式，且日志级别语义优先于国际化。
+ */
 object BaikirutoLog {
 
     fun serviceMissing(service: String, throwable: Throwable) {

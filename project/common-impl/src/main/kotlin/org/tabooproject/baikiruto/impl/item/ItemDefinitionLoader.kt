@@ -14,13 +14,13 @@ import org.tabooproject.baikiruto.core.item.event.PluginReloadEvent
 import org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
+import taboolib.common.platform.function.console
 import taboolib.common.platform.function.getDataFolder
-import taboolib.common.platform.function.info
 import taboolib.common.platform.function.releaseResourceFile
-import taboolib.common.platform.function.warning
 import taboolib.library.configuration.ConfigurationSection
 import taboolib.library.xseries.XMaterial
 import taboolib.module.configuration.Configuration
+import taboolib.module.lang.sendLang
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -87,7 +87,7 @@ object ItemDefinitionLoader {
         }
         loadedItems.forEach { item ->
             if (itemRegistry.contains(item.id)) {
-                warning("[Baikiruto] Duplicate item id detected, overriding previous definition: ${item.id}")
+                console().sendLang("log-item-duplicate-id", item.id)
             }
             itemRegistry.register(item.id, item)
             loadedItemIds += item.id
@@ -100,10 +100,10 @@ object ItemDefinitionLoader {
         ).call()
         ItemScriptPreheatService.preheatIfEnabled(loadedItems)
 
-        info(
-            "[Baikiruto] Item reload from $source completed. " +
-                "loadedItems=${loadedItems.size}, models=${modelRegistry.keys().size}, " +
-                "displays=${displayRegistry.keys().size}, groups=${groupRegistry.keys().size}"
+        console().sendLang(
+            "log-item-reload-complete",
+            source, loadedItems.size, modelRegistry.keys().size,
+            displayRegistry.keys().size, groupRegistry.keys().size
         )
         return loadedItems.size
     }
@@ -175,14 +175,13 @@ object ItemDefinitionLoader {
             if (!factoryType.isNullOrBlank()) {
                 val factory = resolveMetaFactory(manager, factoryType)
                 if (factory == null) {
-                    warning("[Baikiruto] Missing meta factory '$factoryType' for meta '$key', fallback to default meta.")
+                    console().sendLang("log-meta-factory-missing", factoryType, key)
                 } else {
                     val created = runCatching {
                         factory.create(key, source, scripts)
                     }.onFailure {
-                        warning(
-                            "[Baikiruto] Failed to create meta '$key' by factory '${factory.id}': ${it.message}. " +
-                                "Fallback to default meta."
+                        console().sendLang(
+                            "log-meta-factory-failed", key, factory.id, it.message.orEmpty()
                         )
                     }.getOrNull()
                     if (created != null) {
@@ -222,7 +221,7 @@ object ItemDefinitionLoader {
 
     private fun loadConfiguration(file: File): Configuration? {
         return runCatching { Configuration.loadFromFile(file) }.getOrElse {
-            warning("[Baikiruto] Failed to load item file ${file.name}: ${it.message}")
+            console().sendLang("log-item-file-load-failed", file.name, it.message.orEmpty())
             null
         }
     }
@@ -419,12 +418,12 @@ object ItemDefinitionLoader {
                 return
             }
             if (!visiting.add(normalized)) {
-                warning("[Baikiruto] Circular model inheritance detected: $normalized")
+                console().sendLang("log-model-circular", normalized)
                 return
             }
             val model = manager.getModel(normalized)
             if (model == null) {
-                warning("[Baikiruto] Missing model reference: $normalized")
+                console().sendLang("log-model-missing", normalized)
                 visiting.remove(normalized)
                 return
             }

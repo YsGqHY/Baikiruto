@@ -1,4 +1,4 @@
-﻿package org.tabooproject.baikiruto.impl.item
+package org.tabooproject.baikiruto.impl.item
 
 import org.bukkit.Bukkit
 import org.bukkit.ChatColor
@@ -56,6 +56,7 @@ import taboolib.common.platform.Schedule
 import taboolib.common.platform.event.EventPriority
 import taboolib.common.platform.event.SubscribeEvent
 import taboolib.platform.util.isAir
+import taboolib.platform.util.sendLang
 
 object ItemActionListener {
 
@@ -588,7 +589,7 @@ object ItemActionListener {
     private fun ensureOwnership(managed: ManagedItem, player: Player?): OwnershipValidation {
         val result = ItemUniqueFeature.checkOwnership(managed.stream, player)
         if (!result.allowed) {
-            player?.sendMessage(colorize(ItemUniqueFeature.denyMessage(managed.stream)))
+            player?.sendLang("item-unique-deny")
             return OwnershipValidation.Denied
         }
         if (result.changed) {
