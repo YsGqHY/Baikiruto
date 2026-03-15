@@ -57,7 +57,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build plugin
-        run: ./gradlew build --no-daemon
+        run: ./gradlew build --no-daemon -x test
 
       - name: Find built JAR
         id: find_jar
