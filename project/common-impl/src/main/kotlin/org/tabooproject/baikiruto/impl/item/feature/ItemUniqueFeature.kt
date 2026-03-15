@@ -3,6 +3,8 @@ package org.tabooproject.baikiruto.impl.item.feature
 import org.bukkit.entity.Player
 import org.tabooproject.baikiruto.core.item.ItemStream
 import org.tabooproject.baikiruto.impl.item.DefaultItemStream
+import taboolib.common.platform.function.console
+import taboolib.module.lang.asLangText
 import java.util.UUID
 
 object ItemUniqueFeature {
@@ -61,12 +63,12 @@ object ItemUniqueFeature {
     }
 
     /**
-     * 获取拒绝消息。当前 ItemActionListener 已改为直接使用 sendLang("item-unique-deny")，
-     * 此方法保留用于第三方调用兼容，返回的是配置中的原始文本（非 lang key）。
+     * 获取拒绝消息。优先使用物品 runtimeData 中的自定义消息，
+     * 回退到 lang 系统的 "item-unique-deny" key。
      */
     fun denyMessage(stream: ItemStream): String {
         return stream.getRuntimeData(KEY_DENY)?.toString()?.takeIf { it.isNotBlank() }
-            ?: "&cThis item belongs to another player."
+            ?: console().asLangText("item-unique-deny")
     }
 
     fun owner(stream: ItemStream): String? {
