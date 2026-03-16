@@ -3,14 +3,20 @@ package org.tabooproject.baikiruto.impl.item
 import org.bukkit.Bukkit
 import org.bukkit.ChatColor
 import org.bukkit.entity.Player
+import org.bukkit.entity.Projectile
 import org.bukkit.event.Cancellable
 import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
+import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityPickupItemEvent
+import org.bukkit.event.entity.PlayerDeathEvent
+import org.bukkit.event.entity.ProjectileHitEvent
+import org.bukkit.event.entity.ProjectileLaunchEvent
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
+import org.bukkit.event.inventory.InventoryType
 import org.bukkit.event.player.PlayerChangedWorldEvent
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
@@ -19,9 +25,12 @@ import org.bukkit.event.player.PlayerItemBreakEvent
 import org.bukkit.event.player.PlayerItemConsumeEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerItemHeldEvent
+import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerRespawnEvent
 import org.bukkit.event.player.PlayerSwapHandItemsEvent
 import org.bukkit.event.player.PlayerItemDamageEvent
+import org.bukkit.event.player.PlayerToggleSneakEvent
+import org.bukkit.event.player.PlayerToggleSprintEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.tabooproject.baikiruto.core.Baikiruto
@@ -34,18 +43,29 @@ import org.tabooproject.baikiruto.core.item.event.ItemAttackActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemBlockBreakActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemConsumeActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemDamageActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemDeathActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemDropActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemEquipActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemHurtActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemInteractActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemInteractEntityActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemInventoryClickActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemInventoryClickTriggerEvent
 import org.tabooproject.baikiruto.core.item.event.ItemItemBreakActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemJumpActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemKillActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemLeftClickActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemPickupActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemProjectileHitActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemRespawnActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemRightClickActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemSelectActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemShootActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemSneakActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemSprintActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemSwapToMainhandActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemSwapToOffhandActionEvent
+import org.tabooproject.baikiruto.core.item.event.ItemUnequipActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemUseActionEvent
 import org.tabooproject.baikiruto.impl.item.feature.ItemCombatFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
@@ -55,6 +75,7 @@ import org.tabooproject.baikiruto.impl.item.feature.ItemUniqueFeature
 import taboolib.common.platform.Schedule
 import taboolib.common.platform.event.EventPriority
 import taboolib.common.platform.event.SubscribeEvent
+import taboolib.platform.event.PlayerJumpEvent
 import taboolib.platform.util.isAir
 import taboolib.platform.util.sendLang
 
@@ -83,6 +104,7 @@ object ItemActionListener {
     fun onRespawn(event: PlayerRespawnEvent) {
         Baikiruto.api().getItemUpdater().checkUpdate(event.player, event.player.inventory)
         select(event.player)
+        dispatchTracked(event.player, listOf(ItemScriptTrigger.RESPAWN), event)
     }
 
     @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -460,6 +482,174 @@ object ItemActionListener {
         }
     }
 
+    // ── 玩家死亡 ──
+
+    @SubscribeEvent(priority = EventPriority.MONITOR)
+    fun onPlayerDeath(event: PlayerDeathEvent) {
+        val player = event.entity
+        dispatchTracked(player, listOf(ItemScriptTrigger.DEATH), event)
+    }
+
+    // ── 击杀实体 ──
+
+    @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onEntityDeath(event: EntityDeathEvent) {
+        val killer = event.entity.killer ?: return
+        val managed = resolve(killer.inventory.itemInMainHand) ?: return
+        val outcome = dispatch(managed, listOf(ItemScriptTrigger.KILL), killer, event)
+        if (outcome.changed) {
+            killer.inventory.setItemInMainHand(managed.stream.toItemStack())
+        }
+    }
+
+    // ── 玩家受伤 ──
+
+    @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onPlayerHurt(event: EntityDamageEvent) {
+        val player = event.entity as? Player ?: return
+        // 避免与 onPlayerDamage 中的 damage-resistant/death-protection 逻辑冲突
+        // 此处仅做脚本触发，不取消事件
+        dispatchTracked(player, listOf(ItemScriptTrigger.HURT), event)
+    }
+
+    // ── 发射弹射物 ──
+
+    @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onShoot(event: ProjectileLaunchEvent) {
+        val shooter = event.entity.shooter as? Player ?: return
+        val managed = resolve(shooter.inventory.itemInMainHand) ?: return
+        val outcome = dispatch(managed, listOf(ItemScriptTrigger.SHOOT), shooter, event)
+        if (outcome.cancelled) {
+            event.isCancelled = true
+            return
+        }
+        if (outcome.changed) {
+            shooter.inventory.setItemInMainHand(managed.stream.toItemStack())
+        }
+    }
+
+    // ── 弹射物命中 ──
+
+    @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onProjectileHit(event: ProjectileHitEvent) {
+        val shooter = event.entity.shooter as? Player ?: return
+        val managed = resolve(shooter.inventory.itemInMainHand) ?: return
+        val outcome = dispatch(managed, listOf(ItemScriptTrigger.PROJECTILE_HIT), shooter, event)
+        if (outcome.changed) {
+            shooter.inventory.setItemInMainHand(managed.stream.toItemStack())
+        }
+    }
+
+    // ── 潜行切换 ──
+
+    @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onSneak(event: PlayerToggleSneakEvent) {
+        dispatchTracked(event.player, listOf(ItemScriptTrigger.SNEAK), event)
+    }
+
+    // ── 疾跑切换 ──
+
+    @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onSprint(event: PlayerToggleSprintEvent) {
+        dispatchTracked(event.player, listOf(ItemScriptTrigger.SPRINT), event)
+    }
+
+    // ── 跳跃检测 ──
+
+    @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onMove(event: PlayerMoveEvent) {
+
+        val from = event.from
+        val to = event.to ?: return
+        // 仅检测 Y 轴上升且之前在地面上（跳跃）
+        if (to.y <= from.y) return
+        if (!event.player.isOnGround) return
+        // 排除飞行/滑翔
+        if (event.player.isFlying) return
+        if (event.player.isGliding) return
+        dispatchTracked(event.player, listOf(ItemScriptTrigger.JUMP), event)
+    }
+
+    // ── 装备穿戴/脱下检测 ──
+
+    @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onArmorClick(event: InventoryClickEvent) {
+        val player = event.whoClicked as? Player ?: return
+        // 仅处理玩家背包中的装备槽操作
+        if (event.clickedInventory?.type != InventoryType.PLAYER && event.clickedInventory?.type != InventoryType.CRAFTING) return
+        val armorSlotIndex = when (event.rawSlot) {
+            5 -> "HEAD"
+            6 -> "CHEST"
+            7 -> "LEGS"
+            8 -> "FEET"
+            else -> null
+        }
+        if (armorSlotIndex != null) {
+            // 直接点击装备槽
+            handleEquipSlotChange(player, armorSlotIndex, event.currentItem, event.cursor, event)
+            return
+        }
+        // Shift-click 装备到装备槽
+        if (event.isShiftClick && event.currentItem != null) {
+            val targetSlot = resolveArmorSlot(event.currentItem) ?: return
+            val managed = resolve(event.currentItem) ?: return
+            val context = linkedMapOf<String, Any?>("slot" to targetSlot)
+            val outcome = dispatch(managed, listOf(ItemScriptTrigger.EQUIP), player, event, context)
+            if (outcome.changed) {
+                // Shift-click 后物品会自动移动，不需要手动更新
+            }
+        }
+    }
+
+    private fun handleEquipSlotChange(
+        player: Player,
+        slot: String,
+        currentItem: ItemStack?,
+        cursorItem: ItemStack?,
+        event: Any?
+    ) {
+        // 脱下：当前槽位有物品
+        resolve(currentItem)?.let { managed ->
+            val context = linkedMapOf<String, Any?>("slot" to slot)
+            dispatch(managed, listOf(ItemScriptTrigger.UNEQUIP), player, event, context)
+        }
+        // 穿戴：光标上有物品放入槽位
+        resolve(cursorItem)?.let { managed ->
+            val context = linkedMapOf<String, Any?>("slot" to slot)
+            dispatch(managed, listOf(ItemScriptTrigger.EQUIP), player, event, context)
+        }
+    }
+
+    private fun resolveArmorSlot(item: ItemStack?): String? {
+        if (item == null) return null
+        val typeName = item.type.name
+        return when {
+            typeName.endsWith("_HELMET") || typeName.endsWith("_CAP") || typeName == "PLAYER_HEAD" || typeName == "SKELETON_SKULL" || typeName == "ZOMBIE_HEAD" || typeName == "CREEPER_HEAD" || typeName == "DRAGON_HEAD" || typeName == "CARVED_PUMPKIN" || typeName == "TURTLE_HELMET" -> "HEAD"
+            typeName.endsWith("_CHESTPLATE") || typeName == "ELYTRA" -> "CHEST"
+            typeName.endsWith("_LEGGINGS") -> "LEGS"
+            typeName.endsWith("_BOOTS") -> "FEET"
+            else -> null
+        }
+    }
+
+    /**
+     * 遍历玩家全身装备（主手/副手/头盔/胸甲/护腿/靴子），
+     * 对每个 Baikiruto 物品分别 dispatch 触发器，context 中注入 slot 变量。
+     */
+    private fun dispatchTracked(player: Player, triggers: List<ItemScriptTrigger>, event: Any?) {
+        val tracked = collectTrackedStreams(player)
+        if (tracked.isEmpty()) return
+        tracked.forEach { trackedItem ->
+            val item = Baikiruto.api().getItem(trackedItem.stream.itemId) ?: return@forEach
+            val managed = ManagedItem(item, trackedItem.stream)
+            val context = linkedMapOf<String, Any?>("slot" to trackedItem.slot)
+            val outcome = dispatch(managed, triggers, player, event, context)
+            if (outcome.changed) {
+                trackedItem.update(managed.stream.toItemStack())
+            }
+        }
+    }
+
     private fun select(player: Player) {
         player.inventory.contents.forEachIndexed { index, itemStack ->
             val managed = resolve(itemStack) ?: return@forEachIndexed
@@ -556,6 +746,17 @@ object ItemActionListener {
             ItemScriptTrigger.SWAP_TO_MAINHAND -> ItemSwapToMainhandActionEvent(stream, player, source, context)
             ItemScriptTrigger.SWAP_TO_OFFHAND -> ItemSwapToOffhandActionEvent(stream, player, source, context)
             ItemScriptTrigger.INVENTORY_CLICK -> ItemInventoryClickTriggerEvent(stream, player, source, context)
+            ItemScriptTrigger.DEATH -> ItemDeathActionEvent(stream, player, source, context)
+            ItemScriptTrigger.KILL -> ItemKillActionEvent(stream, player, source, context)
+            ItemScriptTrigger.HURT -> ItemHurtActionEvent(stream, player, source, context)
+            ItemScriptTrigger.SHOOT -> ItemShootActionEvent(stream, player, source, context)
+            ItemScriptTrigger.PROJECTILE_HIT -> ItemProjectileHitActionEvent(stream, player, source, context)
+            ItemScriptTrigger.SNEAK -> ItemSneakActionEvent(stream, player, source, context)
+            ItemScriptTrigger.SPRINT -> ItemSprintActionEvent(stream, player, source, context)
+            ItemScriptTrigger.JUMP -> ItemJumpActionEvent(stream, player, source, context)
+            ItemScriptTrigger.RESPAWN -> ItemRespawnActionEvent(stream, player, source, context)
+            ItemScriptTrigger.EQUIP -> ItemEquipActionEvent(stream, player, source, context)
+            ItemScriptTrigger.UNEQUIP -> ItemUnequipActionEvent(stream, player, source, context)
             else -> ItemActionTriggerEvent(stream, player, source, context, trigger)
         }
     }

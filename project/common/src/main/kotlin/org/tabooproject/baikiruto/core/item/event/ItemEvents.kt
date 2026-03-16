@@ -5,11 +5,16 @@ import org.bukkit.event.Cancellable
 import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.entity.EntityDamageByEntityEvent
+import org.bukkit.event.entity.EntityDamageEvent
+import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityPickupItemEvent
+import org.bukkit.event.entity.ProjectileHitEvent
+import org.bukkit.event.entity.ProjectileLaunchEvent
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryAction
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryType
+import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
@@ -17,7 +22,10 @@ import org.bukkit.event.player.PlayerItemBreakEvent
 import org.bukkit.event.player.PlayerItemConsumeEvent
 import org.bukkit.event.player.PlayerItemDamageEvent
 import org.bukkit.event.player.PlayerItemHeldEvent
+import org.bukkit.event.player.PlayerRespawnEvent
 import org.bukkit.event.player.PlayerSwapHandItemsEvent
+import org.bukkit.event.player.PlayerToggleSneakEvent
+import org.bukkit.event.player.PlayerToggleSprintEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
@@ -695,4 +703,196 @@ class ItemInventoryClickActionEvent(
         cancelled = true
         cancellable?.isCancelled = true
     }
+}
+
+// ── 新增触发器事件类 ──
+
+class ItemDeathActionEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>
+) : ItemActionTriggerEvent(stream, player, source, context, ItemScriptTrigger.DEATH) {
+
+    val bukkitEvent: PlayerDeathEvent?
+        get() = source as? PlayerDeathEvent
+
+    val killer: Player?
+        get() = bukkitEvent?.entity?.killer
+
+    val deathMessage: String?
+        get() = bukkitEvent?.deathMessage
+
+    val drops: MutableList<ItemStack>?
+        get() = bukkitEvent?.drops
+
+    val slot: String?
+        get() = context["slot"] as? String
+}
+
+class ItemKillActionEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>
+) : ItemActionTriggerEvent(stream, player, source, context, ItemScriptTrigger.KILL) {
+
+    val bukkitEvent: EntityDeathEvent?
+        get() = source as? EntityDeathEvent
+
+    val killed: org.bukkit.entity.LivingEntity?
+        get() = bukkitEvent?.entity
+
+    val droppedExp: Int
+        get() = bukkitEvent?.droppedExp ?: 0
+
+    val drops: MutableList<ItemStack>?
+        get() = bukkitEvent?.drops
+}
+
+class ItemHurtActionEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>
+) : ItemActionTriggerEvent(stream, player, source, context, ItemScriptTrigger.HURT) {
+
+    val bukkitEvent: EntityDamageEvent?
+        get() = source as? EntityDamageEvent
+
+    val cause: EntityDamageEvent.DamageCause?
+        get() = bukkitEvent?.cause
+
+    val damage: Double
+        get() = bukkitEvent?.damage ?: 0.0
+
+    val finalDamage: Double
+        get() = bukkitEvent?.finalDamage ?: 0.0
+
+    val attacker: org.bukkit.entity.Entity?
+        get() = (bukkitEvent as? EntityDamageByEntityEvent)?.damager
+
+    val slot: String?
+        get() = context["slot"] as? String
+}
+
+class ItemShootActionEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>
+) : ItemActionTriggerEvent(stream, player, source, context, ItemScriptTrigger.SHOOT) {
+
+    val bukkitEvent: ProjectileLaunchEvent?
+        get() = source as? ProjectileLaunchEvent
+
+    val projectile: org.bukkit.entity.Projectile?
+        get() = bukkitEvent?.entity
+}
+
+class ItemProjectileHitActionEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>
+) : ItemActionTriggerEvent(stream, player, source, context, ItemScriptTrigger.PROJECTILE_HIT) {
+
+    val bukkitEvent: ProjectileHitEvent?
+        get() = source as? ProjectileHitEvent
+
+    val projectile: org.bukkit.entity.Projectile?
+        get() = bukkitEvent?.entity
+
+    val hitEntity: org.bukkit.entity.Entity?
+        get() = bukkitEvent?.hitEntity
+
+    val hitBlock: org.bukkit.block.Block?
+        get() = bukkitEvent?.hitBlock
+}
+
+class ItemSneakActionEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>
+) : ItemActionTriggerEvent(stream, player, source, context, ItemScriptTrigger.SNEAK) {
+
+    val bukkitEvent: PlayerToggleSneakEvent?
+        get() = source as? PlayerToggleSneakEvent
+
+    val isSneaking: Boolean
+        get() = bukkitEvent?.isSneaking == true
+
+    val slot: String?
+        get() = context["slot"] as? String
+}
+
+class ItemSprintActionEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>
+) : ItemActionTriggerEvent(stream, player, source, context, ItemScriptTrigger.SPRINT) {
+
+    val bukkitEvent: PlayerToggleSprintEvent?
+        get() = source as? PlayerToggleSprintEvent
+
+    val isSprinting: Boolean
+        get() = bukkitEvent?.isSprinting == true
+
+    val slot: String?
+        get() = context["slot"] as? String
+}
+
+class ItemJumpActionEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>
+) : ItemActionTriggerEvent(stream, player, source, context, ItemScriptTrigger.JUMP) {
+
+    val slot: String?
+        get() = context["slot"] as? String
+}
+
+class ItemRespawnActionEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>
+) : ItemActionTriggerEvent(stream, player, source, context, ItemScriptTrigger.RESPAWN) {
+
+    val bukkitEvent: PlayerRespawnEvent?
+        get() = source as? PlayerRespawnEvent
+
+    val respawnLocation: org.bukkit.Location?
+        get() = bukkitEvent?.respawnLocation
+
+    val isBedSpawn: Boolean
+        get() = bukkitEvent?.isBedSpawn == true
+
+    val slot: String?
+        get() = context["slot"] as? String
+}
+
+class ItemEquipActionEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>
+) : ItemActionTriggerEvent(stream, player, source, context, ItemScriptTrigger.EQUIP) {
+
+    val slot: String?
+        get() = context["slot"] as? String
+}
+
+class ItemUnequipActionEvent(
+    stream: ItemStream,
+    player: Player?,
+    source: Any?,
+    context: MutableMap<String, Any?>
+) : ItemActionTriggerEvent(stream, player, source, context, ItemScriptTrigger.UNEQUIP) {
+
+    val slot: String?
+        get() = context["slot"] as? String
 }

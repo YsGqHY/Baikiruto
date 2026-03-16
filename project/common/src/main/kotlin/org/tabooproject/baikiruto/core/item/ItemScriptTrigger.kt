@@ -20,7 +20,18 @@ enum class ItemScriptTrigger {
     SWAP_TO_OFFHAND,
     INVENTORY_CLICK,
     SELECT,
-    ASYNC_TICK;
+    ASYNC_TICK,
+    DEATH,
+    KILL,
+    HURT,
+    SHOOT,
+    PROJECTILE_HIT,
+    SNEAK,
+    SPRINT,
+    JUMP,
+    RESPAWN,
+    EQUIP,
+    UNEQUIP;
 
     val key: String
         get() = name.lowercase()
@@ -53,6 +64,17 @@ enum class ItemScriptTrigger {
             alias(INVENTORY_CLICK, "on_inventory_click", "oninventoryclick", "on_click", "onclick")
             alias(SELECT, "on_select", "onselect")
             alias(ASYNC_TICK, "on_async_tick", "onasynctick", "on_tick", "ontick")
+            alias(DEATH, "on_death", "ondeath")
+            alias(KILL, "on_kill", "onkill")
+            alias(HURT, "on_hurt", "onhurt")
+            alias(SHOOT, "on_shoot", "onshoot")
+            alias(PROJECTILE_HIT, "on_projectile_hit", "onprojectilehit")
+            alias(SNEAK, "on_sneak", "onsneak")
+            alias(SPRINT, "on_sprint", "onsprint")
+            alias(JUMP, "on_jump", "onjump")
+            alias(RESPAWN, "on_respawn", "onrespawn")
+            alias(EQUIP, "on_equip", "onequip")
+            alias(UNEQUIP, "on_unequip", "onunequip")
         }
 
         fun fromKey(rawKey: String): ItemScriptTrigger? {

@@ -140,6 +140,47 @@ items:
       on_async_tick: |
         &ops.setData("last_trigger", "async_tick")
         return item
+      on_death: |
+        &ops.setData("last_trigger", "death")
+        &ops.setData("death_slot", &ctx["slot"])
+        return item
+      on_kill: |
+        &ops.setData("last_trigger", "kill")
+        return item
+      on_hurt: |
+        &ops.setData("last_trigger", "hurt")
+        &ops.setData("hurt_slot", &ctx["slot"])
+        return item
+      on_shoot: |
+        &ops.setData("last_trigger", "shoot")
+        return item
+      on_projectile_hit: |
+        &ops.setData("last_trigger", "projectile_hit")
+        return item
+      on_sneak: |
+        &ops.setData("last_trigger", "sneak")
+        &ops.setData("sneak_slot", &ctx["slot"])
+        return item
+      on_sprint: |
+        &ops.setData("last_trigger", "sprint")
+        &ops.setData("sprint_slot", &ctx["slot"])
+        return item
+      on_jump: |
+        &ops.setData("last_trigger", "jump")
+        &ops.setData("jump_slot", &ctx["slot"])
+        return item
+      on_respawn: |
+        &ops.setData("last_trigger", "respawn")
+        &ops.setData("respawn_slot", &ctx["slot"])
+        return item
+      on_equip: |
+        &ops.setData("last_trigger", "equip")
+        &ops.setData("equip_slot", &ctx["slot"])
+        return item
+      on_unequip: |
+        &ops.setData("last_trigger", "unequip")
+        &ops.setData("unequip_slot", &ctx["slot"])
+        return item
     metas:
       trace:
         scripts:
