@@ -38,4 +38,19 @@ class ItemDisplayStructureTest {
         )
         assertEquals(listOf("head", "tail"), product)
     }
+
+    @Test
+    fun `structure should preserve unknown angle tags only when policy enabled`() {
+        val previous = DisplayTextPolicy.preserveUnknownAngleTags
+        try {
+            val structure = DefaultStructureSingle("<red><value></red>")
+            DisplayTextPolicy.preserveUnknownAngleTags = false
+            assertEquals("Sword", structure.build(mapOf("value" to "Sword"), trim = true))
+
+            DisplayTextPolicy.preserveUnknownAngleTags = true
+            assertEquals("<red>Sword</red>", structure.build(mapOf("value" to "Sword"), trim = true))
+        } finally {
+            DisplayTextPolicy.preserveUnknownAngleTags = previous
+        }
+    }
 }

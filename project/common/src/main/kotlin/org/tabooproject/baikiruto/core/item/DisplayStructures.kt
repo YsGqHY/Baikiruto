@@ -15,7 +15,7 @@ class DefaultStructureSingle(
             vars[key]
                 ?: vars[key.lowercase()]
                 ?: vars[key.uppercase()]
-                ?: ""
+                ?: if (DisplayTextPolicy.preserveUnknownAngleTags) match.value else ""
         }
         return if (trim) rendered.trim() else rendered
     }
@@ -91,7 +91,8 @@ class DefaultStructureList(
                 return@replace ""
             }
             val key = if (raw.endsWith("...") && raw.length > 3) raw.dropLast(3) else raw
-            lookupList(vars, key)?.firstOrNull() ?: ""
+            lookupList(vars, key)?.firstOrNull()
+                ?: if (DisplayTextPolicy.preserveUnknownAngleTags) match.value else ""
         }
     }
 

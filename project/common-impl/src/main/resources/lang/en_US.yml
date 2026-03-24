@@ -113,7 +113,8 @@ log-booster-enable: '&7ENABLE completed, resources and configuration are availab
 log-booster-active: '&7ACTIVE completed, debug={0}, scriptPreheat={1}'
 log-booster-api-registered: '&7API registered in lifecycle phase: {0}'
 
-log-config-reloaded: '&7Config reloaded: debug={0}, preheat={1}, watcherEnabled={2}, reloadOnlineUpdate={3}, hookMythic={4}, hookAttributePlus={5}, hookHeadDatabase={6}, databaseEnabled={7}'
+log-config-reloaded: '&7Config reloaded: debug={0}, preheat={1}, watcherEnabled={2}, reloadOnlineUpdate={3}, hookMythic={4}, hookAttributePlus={5}, hookHeadDatabase={6}, databaseEnabled={7}, miniMessageEnabled={8}, miniMessageAvailable={9}'
+log-minimessage-unavailable: '&eMiniMessage config parsing is enabled, but the current server/runtime does not provide MiniMessage. Falling back to legacy text parsing.'
 
 log-version-features: '&7Version features: profile={0}, running={1}, versionId={2}, legacyNbt={3}, dataComponent={4}, customModelData={5}, itemModel={6}'
 

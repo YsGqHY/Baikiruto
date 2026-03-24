@@ -6,7 +6,7 @@ import org.serverct.ersha.api.AttributeAPI
 import org.serverct.ersha.api.event.AttrUpdateAttributeEvent
 import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
-import taboolib.common.platform.event.OptionalEvent
+import taboolib.common.platform.Ghost
 import taboolib.common.platform.event.SubscribeEvent
 import taboolib.platform.util.isAir
 
@@ -14,13 +14,13 @@ object AttributePlusHook {
 
     private val RANGE_PATTERN = Regex("""^\s*(-?\d+(?:\.\d+)?)\s*[-~:]\s*(-?\d+(?:\.\d+)?)\s*$""")
 
-    @SubscribeEvent(bind = "org.serverct.ersha.api.event.AttrUpdateAttributeEvent\$After")
-    fun onAttributeUpdate(event: OptionalEvent) {
+    @Ghost
+    @SubscribeEvent
+    fun onAttributeUpdate(e: AttrUpdateAttributeEvent.After) {
         if (!BaikirutoSettings.attributePlusHookEnabled) {
             return
         }
-        val source = event.get<AttrUpdateAttributeEvent.After>()
-        val sourceEntity = source.attributeData.sourceEntity as? Player ?: return
+        val sourceEntity = e.attributeData.sourceEntity as? Player ?: return
         val attrData = AttributeAPI.getAttrData(sourceEntity)
 
         equippedItems(sourceEntity).forEachIndexed { index, item ->

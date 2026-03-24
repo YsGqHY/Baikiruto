@@ -62,12 +62,16 @@ object ItemUniqueFeature {
         )
     }
 
+    fun customDenyMessage(stream: ItemStream): String? {
+        return stream.getRuntimeData(KEY_DENY)?.toString()?.takeIf { it.isNotBlank() }
+    }
+
     /**
      * 获取拒绝消息。优先使用物品 runtimeData 中的自定义消息，
      * 回退到 lang 系统的 "item-unique-deny" key。
      */
     fun denyMessage(stream: ItemStream): String {
-        return stream.getRuntimeData(KEY_DENY)?.toString()?.takeIf { it.isNotBlank() }
+        return customDenyMessage(stream)
             ?: console().asLangText("item-unique-deny")
     }
 

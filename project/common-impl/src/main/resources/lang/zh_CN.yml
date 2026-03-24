@@ -113,7 +113,8 @@ log-booster-enable: '&7ENABLE 完成, 资源和配置已可用。'
 log-booster-active: '&7ACTIVE 完成, debug={0}, scriptPreheat={1}'
 log-booster-api-registered: '&7API 已在生命周期阶段注册: {0}'
 
-log-config-reloaded: '&7配置已重载: debug={0}, preheat={1}, watcherEnabled={2}, reloadOnlineUpdate={3}, hookMythic={4}, hookAttributePlus={5}, hookHeadDatabase={6}, databaseEnabled={7}'
+log-config-reloaded: '&7配置已重载: debug={0}, preheat={1}, watcherEnabled={2}, reloadOnlineUpdate={3}, hookMythic={4}, hookAttributePlus={5}, hookHeadDatabase={6}, databaseEnabled={7}, miniMessageEnabled={8}, miniMessageAvailable={9}'
+log-minimessage-unavailable: '&e已启用 MiniMessage 配置解析，但当前服务端/运行环境未提供 MiniMessage，已回退为原有文本解析。'
 
 log-version-features: '&7版本特性: profile={0}, running={1}, versionId={2}, legacyNbt={3}, dataComponent={4}, customModelData={5}, itemModel={6}'
 

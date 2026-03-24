@@ -3,6 +3,7 @@ package org.tabooproject.baikiruto.impl.item
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.tabooproject.baikiruto.core.Baikiruto
+import org.tabooproject.baikiruto.core.item.DisplayTextPolicy
 import org.tabooproject.baikiruto.core.item.ItemDisplay
 import org.tabooproject.baikiruto.core.item.ItemScriptTrigger
 import org.tabooproject.baikiruto.core.item.ItemSignal
@@ -673,10 +674,10 @@ class DefaultItemStream(
             if (variable.isEmpty()) {
                 return@replace ""
             }
-            val key = if (variable.endsWith("...")) variable.dropLast(3) else variable
+            val key = if (variable.endsWith("...") && variable.length > 3) variable.dropLast(3) else variable
             lookupScalar(scalar, key)
                 ?: lookupList(list, key)?.firstOrNull()
-                ?: ""
+                ?: if (DisplayTextPolicy.preserveUnknownAngleTags) match.value else ""
         }
     }
 

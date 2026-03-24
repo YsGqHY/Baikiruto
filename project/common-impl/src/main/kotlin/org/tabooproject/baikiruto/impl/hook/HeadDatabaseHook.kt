@@ -1,10 +1,12 @@
 package org.tabooproject.baikiruto.impl.hook
 
+import me.arcaniax.hdb.api.DatabaseLoadEvent
 import me.arcaniax.hdb.api.HeadDatabaseAPI
 import org.bukkit.Bukkit
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
+import taboolib.common.platform.Ghost
 import taboolib.common.platform.event.OptionalEvent
 import taboolib.common.platform.event.SubscribeEvent
 
@@ -18,8 +20,9 @@ object HeadDatabaseHook {
         databaseLoaded = isHookAvailable()
     }
 
-    @SubscribeEvent(bind = "me.arcaniax.hdb.api.DatabaseLoadEvent")
-    fun onDatabaseLoad(@Suppress("UNUSED_PARAMETER") event: OptionalEvent) {
+    @Ghost
+    @SubscribeEvent
+    fun onDatabaseLoad(e: DatabaseLoadEvent) {
         databaseLoaded = true
     }
 

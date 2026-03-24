@@ -1,6 +1,8 @@
 package org.tabooproject.baikiruto.impl
 
 import org.bukkit.entity.Player
+import org.tabooproject.baikiruto.core.item.DisplayTextPolicy
+import org.tabooproject.baikiruto.impl.item.LegacyTextColorizer
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
 import taboolib.common.platform.function.console
@@ -22,6 +24,9 @@ object BaikirutoSettings {
 
     @ConfigNode("settings.debug-users")
     var debugUsers = listOf<String>()
+
+    @ConfigNode("settings.mini-message.enabled")
+    var miniMessageEnabled = false
 
     fun shouldDebugPlayer(player: Player?): Boolean {
         if (!debug || player == null) {
@@ -104,12 +109,27 @@ object BaikirutoSettings {
 
     @Awake(LifeCycle.ENABLE)
     private fun init() {
+        syncDisplayTextPolicy()
+        reportMiniMessageState()
         conf.onReload {
+            syncDisplayTextPolicy()
+            reportMiniMessageState()
             console().sendLang(
                 "log-config-reloaded",
                 debug, scriptPreheatEnabled, watcherEnabled, reloadOnlineUpdateEnabled,
-                mythicHookEnabled, attributePlusHookEnabled, headDatabaseHookEnabled, databaseEnabled
+                mythicHookEnabled, attributePlusHookEnabled, headDatabaseHookEnabled, databaseEnabled,
+                miniMessageEnabled, LegacyTextColorizer.miniMessageAvailable()
             )
+        }
+    }
+
+    private fun syncDisplayTextPolicy() {
+        DisplayTextPolicy.preserveUnknownAngleTags = miniMessageEnabled
+    }
+
+    private fun reportMiniMessageState() {
+        if (miniMessageEnabled && !LegacyTextColorizer.miniMessageAvailable()) {
+            console().sendLang("log-minimessage-unavailable")
         }
     }
 }

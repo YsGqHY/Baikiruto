@@ -1,7 +1,6 @@
 package org.tabooproject.baikiruto.impl.item
 
 import org.bukkit.Bukkit
-import org.bukkit.ChatColor
 import org.bukkit.entity.Player
 import org.bukkit.entity.Projectile
 import org.bukkit.event.Cancellable
@@ -790,17 +789,18 @@ object ItemActionListener {
     private fun ensureOwnership(managed: ManagedItem, player: Player?): OwnershipValidation {
         val result = ItemUniqueFeature.checkOwnership(managed.stream, player)
         if (!result.allowed) {
-            player?.sendLang("item-unique-deny")
+            val customMessage = ItemUniqueFeature.customDenyMessage(managed.stream)
+            if (customMessage != null) {
+                player?.sendMessage(LegacyTextColorizer.colorize(customMessage))
+            } else {
+                player?.sendLang("item-unique-deny")
+            }
             return OwnershipValidation.Denied
         }
         if (result.changed) {
             return OwnershipValidation.Changed
         }
         return OwnershipValidation.Pass
-    }
-
-    private fun colorize(message: String): String {
-        return ChatColor.translateAlternateColorCodes('&', message)
     }
 
     private fun collectTrackedStreams(player: Player): List<TrackedItem> {

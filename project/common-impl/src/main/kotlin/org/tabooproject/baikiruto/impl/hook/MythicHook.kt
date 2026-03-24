@@ -8,7 +8,7 @@ import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
-import taboolib.common.platform.event.OptionalEvent
+import taboolib.common.platform.Ghost
 import taboolib.common.platform.event.SubscribeEvent
 import taboolib.common.platform.function.submit
 import taboolib.library.configuration.ConfigurationSection
@@ -17,13 +17,13 @@ import kotlin.random.Random
 
 object MythicHook {
 
-    @SubscribeEvent(bind = "ink.ptms.um.event.MobSpawnEvent")
-    fun onMobSpawn(event: OptionalEvent) {
+    @Ghost
+    @SubscribeEvent
+    fun onMobSpawn(e: MobSpawnEvent) {
         if (!BaikirutoSettings.mythicHookEnabled) {
             return
         }
-        val source = event.get<MobSpawnEvent>()
-        val mob = source.mob ?: return
+        val mob = e.mob ?: return
         val config = mob.config
         val equipmentSection = config.getConfigurationSection("Baikiruto.equipments")
             ?: return
@@ -33,20 +33,20 @@ object MythicHook {
         }
     }
 
-    @SubscribeEvent(bind = "ink.ptms.um.event.MobDeathEvent")
-    fun onMobDeath(event: OptionalEvent) {
+    @Ghost
+    @SubscribeEvent
+    fun onMobDeath(e: MobDeathEvent) {
         if (!BaikirutoSettings.mythicHookEnabled) {
             return
         }
-        val source = event.get<MobDeathEvent>()
-        val mob = source.mob
+        val mob = e.mob
         val config = mob.config
         val dropLines = config.getStringList("Baikiruto.drops")
         if (dropLines.isEmpty()) {
             return
         }
 
-        val killer = source.killer as? Player
+        val killer = e.killer as? Player
         val context = linkedMapOf<String, Any?>()
         if (killer != null) {
             context["player"] = killer
@@ -54,7 +54,7 @@ object MythicHook {
             context["killer"] = killer
         }
 
-        val drops = source.drop
+        val drops = e.drop
         dropLines.forEach { line ->
             val parsed = parseDrop(line) ?: return@forEach
             if (!parsed.roll()) {

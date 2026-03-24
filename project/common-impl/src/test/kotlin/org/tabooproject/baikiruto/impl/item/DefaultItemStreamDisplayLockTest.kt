@@ -2,9 +2,11 @@ package org.tabooproject.baikiruto.impl.item
 
 import org.bukkit.Material
 import org.bukkit.inventory.ItemStack
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.tabooproject.baikiruto.core.item.DisplayTextPolicy
 import org.tabooproject.baikiruto.impl.item.feature.ItemDurabilityFeature
 
 class DefaultItemStreamDisplayLockTest {
@@ -73,6 +75,32 @@ class DefaultItemStreamDisplayLockTest {
         assertTrue(rendered[0].contains("Tester"))
         assertFalse(rendered[0].contains("{unique.player}"))
         assertFalse(rendered[1].contains("{last_trigger}"))
+    }
+
+    @Test
+    fun `should preserve unknown angle tags for runtime display only when policy enabled`() {
+        val stream = DefaultItemStream(
+            backingItem = ItemStack(Material.STONE),
+            itemId = "test:item",
+            versionHash = "v1"
+        )
+        val context = invokeNoArg(stream, "runtimeTemplateContext")
+        val previous = DisplayTextPolicy.preserveUnknownAngleTags
+        try {
+            DisplayTextPolicy.preserveUnknownAngleTags = false
+            assertEquals(
+                listOf("Hello"),
+                invokeWithContext(stream, "renderLoreTemplates", listOf("<red>Hello</red>"), context)
+            )
+
+            DisplayTextPolicy.preserveUnknownAngleTags = true
+            assertEquals(
+                listOf("<red>Hello</red>"),
+                invokeWithContext(stream, "renderLoreTemplates", listOf("<red>Hello</red>"), context)
+            )
+        } finally {
+            DisplayTextPolicy.preserveUnknownAngleTags = previous
+        }
     }
 
     private fun invokeNoArg(target: Any, methodName: String): Any {

@@ -7,6 +7,11 @@ settings:
     - "Y_Mical"
     - "TabooLib"
 
+  mini-message:
+    # Enable MiniMessage parsing for item configuration text.
+    # MiniMessage is applied only when the runtime also provides MiniMessage classes.
+    enabled: false
+
 script:
   preheat:
     # Whether script preheat should be enabled during startup/reload.
