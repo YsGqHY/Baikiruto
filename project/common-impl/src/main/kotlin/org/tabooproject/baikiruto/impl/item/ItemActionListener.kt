@@ -585,13 +585,24 @@ object ItemActionListener {
         }
         if (armorSlotIndex != null) {
             // 直接点击装备槽
-            handleEquipSlotChange(player, armorSlotIndex, event.currentItem, event.cursor, event)
+            if (handleEquipSlotChange(player, armorSlotIndex, event.currentItem, event.cursor, event)) {
+                event.isCancelled = true
+            }
             return
         }
         // Shift-click 装备到装备槽
         if (event.isShiftClick && event.currentItem != null) {
             val targetSlot = resolveArmorSlot(event.currentItem) ?: return
             val managed = resolve(event.currentItem) ?: return
+            // 绑定检查：阻止非绑定玩家穿戴
+            when (ensureOwnership(managed, player)) {
+                is OwnershipValidation.Denied -> {
+                    event.isCancelled = true
+                    return
+                }
+                is OwnershipValidation.Changed -> Unit
+                OwnershipValidation.Pass -> Unit
+            }
             val context = linkedMapOf<String, Any?>("slot" to targetSlot)
             val outcome = dispatch(managed, listOf(ItemScriptTrigger.EQUIP), player, event, context)
             if (outcome.changed) {
@@ -600,23 +611,37 @@ object ItemActionListener {
         }
     }
 
+    /**
+     * 处理装备槽位变更（直接点击装备槽）。
+     * @return true 表示操作被拒绝（绑定检查失败），调用方应取消事件
+     */
     private fun handleEquipSlotChange(
         player: Player,
         slot: String,
         currentItem: ItemStack?,
         cursorItem: ItemStack?,
         event: Any?
-    ) {
+    ): Boolean {
+        // 穿戴前先检查绑定，避免在拒绝时误触发 UNEQUIP 脚本
+        val cursorManaged = resolve(cursorItem)
+        if (cursorManaged != null) {
+            when (ensureOwnership(cursorManaged, player)) {
+                is OwnershipValidation.Denied -> return true
+                is OwnershipValidation.Changed -> Unit
+                OwnershipValidation.Pass -> Unit
+            }
+        }
         // 脱下：当前槽位有物品
         resolve(currentItem)?.let { managed ->
             val context = linkedMapOf<String, Any?>("slot" to slot)
             dispatch(managed, listOf(ItemScriptTrigger.UNEQUIP), player, event, context)
         }
         // 穿戴：光标上有物品放入槽位
-        resolve(cursorItem)?.let { managed ->
+        if (cursorManaged != null) {
             val context = linkedMapOf<String, Any?>("slot" to slot)
-            dispatch(managed, listOf(ItemScriptTrigger.EQUIP), player, event, context)
+            dispatch(cursorManaged, listOf(ItemScriptTrigger.EQUIP), player, event, context)
         }
+        return false
     }
 
     private fun resolveArmorSlot(item: ItemStack?): String? {

@@ -31,7 +31,7 @@ subprojects {
             forceDownloadInDev = false
             enableLegacyDependencyResolver = true
         }
-        version { taboolib = "6.2.4-3d34097" }
+        version { taboolib = "6.2.4-99fb800" }
     }
 
     // 仓库
