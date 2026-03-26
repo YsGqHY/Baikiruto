@@ -290,9 +290,9 @@ abstract class BaseItemMetaVersionAdapter {
                 ?: "ADD_NUMBER"
             val slotName = entry["slot"]?.toString()?.trim()?.uppercase(Locale.ENGLISH)
 
-            val attribute = resolveEnumConstant(attributeClass, attributeName)
+            val attribute = resolveAttributeConstant(attributeClass, attributeName)
             if (attribute == null) {
-                debugLog("[Baikiruto/Debug]   attr=$attributeName -> enum constant not found in Attribute class (available: ${attributeClass.enumConstants?.map { (it as Enum<*>).name }}), skipping")
+                debugLog("[Baikiruto/Debug]   attr=$attributeName -> attribute constant not found after all fallback attempts, skipping")
                 return@forEach
             }
             val operation = runCatching { AttributeModifier.Operation.valueOf(operationName) }.getOrNull()
@@ -632,10 +632,105 @@ abstract class BaseItemMetaVersionAdapter {
         return runCatching { PotionEffect(effectType, duration, amplifier, ambient, particles) }.getOrNull()
     }
 
-    private fun resolveEnumConstant(enumClass: Class<*>, name: String): Any? {
-        return enumClass.enumConstants?.firstOrNull { constant ->
-            (constant as? Enum<*>)?.name == name
+    /**
+     * 解析 Attribute 常量，兼容 1.12-1.20（enum GENERIC_MAX_HEALTH）和 1.21+（Registry MAX_HEALTH）。
+     *
+     * 查找顺序：
+     * 1. 原始名称（如 GENERIC_MAX_HEALTH）
+     * 2. 去掉 GENERIC_ 前缀（如 MAX_HEALTH）
+     * 3. 添加 GENERIC_ 前缀（如果原始名称没有）
+     */
+    private fun resolveAttributeConstant(attributeClass: Class<*>, name: String): Any? {
+        debugLog("[Baikiruto/Debug]   resolveAttributeConstant: trying '$name'")
+        resolveEnumConstant(attributeClass, name)?.let {
+            debugLog("[Baikiruto/Debug]   resolveAttributeConstant: found '$name' directly")
+            return it
         }
+
+        // 1.21+: GENERIC_MAX_HEALTH -> MAX_HEALTH
+        if (name.startsWith("GENERIC_")) {
+            val withoutPrefix = name.removePrefix("GENERIC_")
+            debugLog("[Baikiruto/Debug]   resolveAttributeConstant: trying without GENERIC_ prefix -> '$withoutPrefix'")
+            resolveEnumConstant(attributeClass, withoutPrefix)?.let {
+                debugLog("[Baikiruto/Debug]   resolveAttributeConstant: found '$withoutPrefix'")
+                return it
+            }
+        }
+
+        // 反向兼容: MAX_HEALTH -> GENERIC_MAX_HEALTH
+        if (!name.startsWith("GENERIC_")) {
+            val withPrefix = "GENERIC_$name"
+            debugLog("[Baikiruto/Debug]   resolveAttributeConstant: trying with GENERIC_ prefix -> '$withPrefix'")
+            resolveEnumConstant(attributeClass, withPrefix)?.let {
+                debugLog("[Baikiruto/Debug]   resolveAttributeConstant: found '$withPrefix'")
+                return it
+            }
+        }
+
+        debugLog("[Baikiruto/Debug]   resolveAttributeConstant: all attempts failed for '$name'")
+        return null
+    }
+
+    private fun resolveEnumConstant(enumClass: Class<*>, name: String): Any? {
+        // 1) 标准 Java enum 查找
+        enumClass.enumConstants?.firstOrNull { constant ->
+            (constant as? Enum<*>)?.name == name
+        }?.let { return it }
+
+        // 2) 1.21+ Attribute 变为接口，通过 Registry 查找
+        //    尝试 Attribute.valueOf(name) 静态方法（OldEnum 兼容）
+        val valueOf = enumClass.methods.firstOrNull { method ->
+            method.name == "valueOf" && method.parameterCount == 1 && method.parameterTypes[0] == String::class.java
+        }
+        if (valueOf != null) {
+            val result = runCatching { invokeStaticWithReflex(enumClass, valueOf, name) }.getOrNull()
+            if (result != null) return result
+        }
+
+        // 3) 通过 Registry.get(NamespacedKey) 查找
+        val registryResult = resolveViaRegistry(enumClass, name)
+        if (registryResult != null) return registryResult
+
+        return null
+    }
+
+    /**
+     * 通过 Bukkit Registry 查找常量。
+     * 支持 1.21+ 中 Attribute 等从 enum 迁移到 Registry 的类型。
+     */
+    private fun resolveViaRegistry(targetClass: Class<*>, name: String): Any? {
+        val registryClass = resolveClass("org.bukkit.Registry") ?: return null
+
+        // 查找 Registry 上与目标类型匹配的静态字段
+        val registryField = registryClass.fields.firstOrNull { field ->
+            java.lang.reflect.Modifier.isStatic(field.modifiers) &&
+                runCatching {
+                    val genericType = field.genericType
+                    if (genericType is java.lang.reflect.ParameterizedType) {
+                        genericType.actualTypeArguments.any { arg ->
+                            arg == targetClass || (arg is Class<*> && targetClass.isAssignableFrom(arg))
+                        }
+                    } else {
+                        false
+                    }
+                }.getOrDefault(false)
+        }
+
+        // 如果找不到泛型匹配，尝试按名称匹配（如 Registry.ATTRIBUTE）
+        val registry = if (registryField != null) {
+            runCatching { registryField.get(null) }.getOrNull()
+        } else {
+            val fieldName = targetClass.simpleName.uppercase(Locale.ENGLISH)
+            runCatching { registryClass.getField(fieldName).get(null) }.getOrNull()
+        } ?: return null
+
+        // 尝试 registry.get(NamespacedKey)
+        val namespacedKeyName = name.lowercase(Locale.ENGLISH)
+        val namespacedKey = createNamespacedKey("minecraft:$namespacedKeyName") ?: return null
+        val getMethod = registry.javaClass.methods.firstOrNull { method ->
+            method.name == "get" && method.parameterCount == 1
+        } ?: return null
+        return invokeWithReflex(registry, getMethod, namespacedKey)
     }
 
     private fun normalizeSkullTexture(raw: String): String {
