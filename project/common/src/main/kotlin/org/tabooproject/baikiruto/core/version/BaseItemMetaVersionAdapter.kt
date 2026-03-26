@@ -12,6 +12,7 @@ import org.bukkit.inventory.ItemFlag
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.ItemMeta
 import org.tabooproject.baikiruto.core.item.Attributes
+import taboolib.common.platform.function.info
 import java.lang.reflect.Constructor
 import java.lang.reflect.Method
 import taboolib.library.reflex.LazyClass
@@ -24,6 +25,19 @@ import java.util.UUID
 abstract class BaseItemMetaVersionAdapter {
 
     protected open val supportsCustomModelData: Boolean = true
+
+    /**
+     * Debug 日志开关，子类可覆盖以接入实际的 debug 配置。
+     * 默认通过系统属性 `baikiruto.debug` 控制。
+     */
+    protected open val debugEnabled: Boolean
+        get() = System.getProperty("baikiruto.debug", "false").equals("true", ignoreCase = true)
+
+    protected fun debugLog(message: String) {
+        if (debugEnabled) {
+            info(message)
+        }
+    }
 
     private val enchantmentsByFieldName: Map<String, Enchantment> by lazy {
         buildMap {
@@ -103,6 +117,8 @@ abstract class BaseItemMetaVersionAdapter {
     }
 
     open fun applyVersionEffects(itemStack: ItemStack, runtimeData: Map<String, Any?>) {
+        debugLog("[Baikiruto/Debug] applyVersionEffects: runtimeData keys=${runtimeData.keys}")
+        debugLog("[Baikiruto/Debug] applyVersionEffects: attributes=${runtimeData["attributes"]}")
         val damage = intValue(runtimeData["damage"]) ?: intValue(runtimeData["legacy-durability"])
         if (damage != null) {
             applyDamage(itemStack, damage)
@@ -232,32 +248,79 @@ abstract class BaseItemMetaVersionAdapter {
     }
 
     protected open fun applyAttributes(itemMeta: ItemMeta, rawAttributes: Any?) {
-        val entries = rawAttributes as? Iterable<*> ?: return
-        val attributeClass = resolveClass("org.bukkit.attribute.Attribute") ?: return
+        if (rawAttributes == null) {
+            debugLog("[Baikiruto/Debug] applyAttributes: rawAttributes is null, skipping")
+            return
+        }
+        val entries = rawAttributes as? Iterable<*>
+        if (entries == null) {
+            debugLog("[Baikiruto/Debug] applyAttributes: rawAttributes is not Iterable (type=${rawAttributes.javaClass.name}), skipping")
+            return
+        }
+        val attributeClass = resolveClass("org.bukkit.attribute.Attribute")
+        if (attributeClass == null) {
+            debugLog("[Baikiruto/Debug] applyAttributes: org.bukkit.attribute.Attribute class not found, skipping")
+            return
+        }
         val addMethod = itemMeta.javaClass.methods.firstOrNull { method ->
             method.name == "addAttributeModifier" && method.parameterCount == 2
-        } ?: return
+        }
+        if (addMethod == null) {
+            debugLog("[Baikiruto/Debug] applyAttributes: addAttributeModifier method not found on ${itemMeta.javaClass.name}, skipping")
+            return
+        }
+        debugLog("[Baikiruto/Debug] applyAttributes: processing ${entries.count()} entries")
         entries.forEach { rawEntry ->
-            val entry = rawEntry as? Map<*, *> ?: return@forEach
-            val attributeName = entry["attribute"]?.toString()?.trim()?.uppercase(Locale.ENGLISH) ?: return@forEach
-            val amount = doubleValue(entry["amount"]) ?: return@forEach
+            val entry = rawEntry as? Map<*, *>
+            if (entry == null) {
+                debugLog("[Baikiruto/Debug]   entry is not a Map (type=${rawEntry?.javaClass?.name}), skipping")
+                return@forEach
+            }
+            val attributeName = entry["attribute"]?.toString()?.trim()?.uppercase(Locale.ENGLISH)
+            if (attributeName == null) {
+                debugLog("[Baikiruto/Debug]   entry missing 'attribute' key, entry=$entry, skipping")
+                return@forEach
+            }
+            val amount = doubleValue(entry["amount"])
+            if (amount == null) {
+                debugLog("[Baikiruto/Debug]   attr=$attributeName -> amount is null (raw=${entry["amount"]}), skipping")
+                return@forEach
+            }
             val operationName = entry["operation"]?.toString()?.trim()?.uppercase(Locale.ENGLISH)
                 ?: "ADD_NUMBER"
             val slotName = entry["slot"]?.toString()?.trim()?.uppercase(Locale.ENGLISH)
 
-            val attribute = resolveEnumConstant(attributeClass, attributeName) ?: return@forEach
+            val attribute = resolveEnumConstant(attributeClass, attributeName)
+            if (attribute == null) {
+                debugLog("[Baikiruto/Debug]   attr=$attributeName -> enum constant not found in Attribute class (available: ${attributeClass.enumConstants?.map { (it as Enum<*>).name }}), skipping")
+                return@forEach
+            }
             val operation = runCatching { AttributeModifier.Operation.valueOf(operationName) }.getOrNull()
-                ?: return@forEach
+            if (operation == null) {
+                debugLog("[Baikiruto/Debug]   attr=$attributeName -> operation '$operationName' not found (available: ${AttributeModifier.Operation.values().map { it.name }}), skipping")
+                return@forEach
+            }
             val slot = slotName?.let { rawSlot ->
                 runCatching { EquipmentSlot.valueOf(rawSlot) }.getOrNull()
             }
+            if (slotName != null && slot == null) {
+                debugLog("[Baikiruto/Debug]   attr=$attributeName -> slot '$slotName' not found (available: ${EquipmentSlot.values().map { it.name }}), skipping")
+                return@forEach
+            }
+            debugLog("[Baikiruto/Debug]   attr=$attributeName, amount=$amount, operation=$operation, slot=$slot -> creating modifier")
             val modifier = Attributes.createAttributeModifier(
                 name = "baikiruto.attr",
                 amount = amount,
                 operation = operation,
                 equipmentSlot = slot
-            ) ?: return@forEach
-            invokeWithReflexSucceeded(itemMeta, addMethod, attribute, modifier)
+            )
+            if (modifier == null) {
+                debugLog("[Baikiruto/Debug]   attr=$attributeName -> Attributes.createAttributeModifier returned null!")
+                return@forEach
+            }
+            debugLog("[Baikiruto/Debug]   attr=$attributeName -> modifier created: $modifier, invoking addAttributeModifier")
+            val success = invokeWithReflexSucceeded(itemMeta, addMethod, attribute, modifier)
+            debugLog("[Baikiruto/Debug]   attr=$attributeName -> addAttributeModifier result: $success")
         }
     }
 

@@ -10,6 +10,7 @@ import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import taboolib.common.platform.Ghost
 import taboolib.common.platform.event.SubscribeEvent
+import taboolib.common.platform.function.info
 import taboolib.common.platform.function.submit
 import taboolib.library.configuration.ConfigurationSection
 import java.util.Locale
@@ -26,7 +27,10 @@ object MythicHook {
         val mob = e.mob ?: return
         val config = mob.config
         val equipmentSection = config.getConfigurationSection("Baikiruto.equipments")
-            ?: return
+        BaikirutoSettings.debug { info("[Baikiruto][DEBUG][MM_SPAWN] mob=${mob.id} hasEquipments=${equipmentSection != null}") }
+        if (equipmentSection == null) {
+            return
+        }
         val entity = mob.entity as? LivingEntity ?: return
         submit(delay = 5L) {
             applyEquipments(equipmentSection, entity)
@@ -42,6 +46,7 @@ object MythicHook {
         val mob = e.mob
         val config = mob.config
         val dropLines = config.getStringList("Baikiruto.drops")
+        BaikirutoSettings.debug { info("[Baikiruto][DEBUG][MM_DEATH] mob=${mob.id} killer=${(e.killer as? Player)?.name} dropLines=$dropLines") }
         if (dropLines.isEmpty()) {
             return
         }
@@ -56,13 +61,24 @@ object MythicHook {
 
         val drops = e.drop
         dropLines.forEach { line ->
-            val parsed = parseDrop(line) ?: return@forEach
-            if (!parsed.roll()) {
+            val parsed = parseDrop(line)
+            if (parsed == null) {
+                BaikirutoSettings.debug { info("[Baikiruto][DEBUG][MM_DROP] SKIP parse failed: '$line'") }
                 return@forEach
             }
-            val item = Baikiruto.api().getItemManager().generateItemStack(parsed.itemId, context) ?: return@forEach
+            val rolled = parsed.roll()
+            if (!rolled) {
+                BaikirutoSettings.debug { info("[Baikiruto][DEBUG][MM_DROP] SKIP roll failed: item=${parsed.itemId} chance=${parsed.chance}") }
+                return@forEach
+            }
+            val item = Baikiruto.api().getItemManager().generateItemStack(parsed.itemId, context)
+            if (item == null) {
+                BaikirutoSettings.debug { info("[Baikiruto][DEBUG][MM_DROP] SKIP item not found: '${parsed.itemId}' (generateItemStack returned null)") }
+                return@forEach
+            }
             item.amount = parsed.nextAmount()
             drops += item
+            BaikirutoSettings.debug { info("[Baikiruto][DEBUG][MM_DROP] OK item=${parsed.itemId} amount=${item.amount} type=${item.type}") }
         }
     }
 
@@ -72,9 +88,10 @@ object MythicHook {
             val item = if (value.equals("air", true)) {
                 ItemStack(Material.AIR)
             } else {
-                Baikiruto.api().getItemManager().generateItemStack(value) ?: ItemStack(Material.AIR)
+                Baikiruto.api().getItemManager().generateItemStack(value)
             }
-            setEquipment(entity, slot, item)
+            BaikirutoSettings.debug { info("[Baikiruto][DEBUG][MM_EQUIP] entity=${entity.type} slot=$slot itemId=$value resolved=${item != null} type=${item?.type}") }
+            setEquipment(entity, slot, item ?: ItemStack(Material.AIR))
         }
     }
 

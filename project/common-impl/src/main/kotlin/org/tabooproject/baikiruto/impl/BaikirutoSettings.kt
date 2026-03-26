@@ -25,6 +25,14 @@ object BaikirutoSettings {
     @ConfigNode("settings.debug-users")
     var debugUsers = listOf<String>()
 
+    /**
+     * 当 debug 开关开启时执行 [block]，用于输出调试日志。
+     * 使用 inline + lambda 避免 debug 关闭时产生字符串拼接开销。
+     */
+    inline fun debug(block: () -> Unit) {
+        if (debug) block()
+    }
+
     @ConfigNode("settings.mini-message.enabled")
     var miniMessageEnabled = false
 
@@ -109,9 +117,11 @@ object BaikirutoSettings {
 
     @Awake(LifeCycle.ENABLE)
     private fun init() {
+        syncDebugSystemProperty()
         syncDisplayTextPolicy()
         reportMiniMessageState()
         conf.onReload {
+            syncDebugSystemProperty()
             syncDisplayTextPolicy()
             reportMiniMessageState()
             console().sendLang(
@@ -121,6 +131,13 @@ object BaikirutoSettings {
                 miniMessageEnabled, LegacyTextColorizer.miniMessageAvailable()
             )
         }
+    }
+
+    /**
+     * 将 debug 开关同步到系统属性，供 common 模块中无法直接引用 BaikirutoSettings 的组件使用。
+     */
+    private fun syncDebugSystemProperty() {
+        System.setProperty("baikiruto.debug", debug.toString())
     }
 
     private fun syncDisplayTextPolicy() {

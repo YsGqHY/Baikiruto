@@ -71,7 +71,10 @@ import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDurabilityFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemUseRemainderFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemUniqueFeature
+import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import taboolib.common.platform.Schedule
+import taboolib.common.platform.function.info
+import taboolib.common.platform.function.submit
 import taboolib.common.platform.event.EventPriority
 import taboolib.common.platform.event.SubscribeEvent
 import taboolib.platform.event.PlayerJumpEvent
@@ -125,8 +128,17 @@ object ItemActionListener {
         }
     }
 
-    @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @SubscribeEvent(priority = EventPriority.HIGH)
     fun onInteract(event: PlayerInteractEvent) {
+        // 右键空气/方块会触发两次（主手+副手），只处理主手
+        if (event.hand == EquipmentSlot.OFF_HAND && event.item == null) return
+        BaikirutoSettings.debug {
+            val isArmor = resolveArmorSlot(event.item)
+            if (event.action == Action.RIGHT_CLICK_AIR || event.action == Action.RIGHT_CLICK_BLOCK) {
+                info("[Baikiruto][DEBUG][INTERACT_RAW] player=${event.player.name} action=${event.action} hand=${event.hand} item=${event.item?.type} isArmor=$isArmor isCancelled=${event.isCancelled} useItemInHand=${event.useItemInHand()}")
+            }
+        }
+        if (event.isCancelled && event.action != Action.LEFT_CLICK_AIR && event.action != Action.RIGHT_CLICK_AIR) return
         val managed = resolve(event.item) ?: return
         val triggers = mutableListOf(ItemScriptTrigger.INTERACT)
         when (event.action) {
@@ -137,9 +149,18 @@ object ItemActionListener {
             }
             else -> return
         }
-        when (val ownership = ensureOwnership(managed, event.player)) {
+        // 右键穿戴装备绑定拦截
+        val isRightClick = event.action == Action.RIGHT_CLICK_AIR || event.action == Action.RIGHT_CLICK_BLOCK
+        val armorSlot = if (isRightClick) resolveArmorSlot(event.item) else null
+        if (isRightClick && armorSlot != null) {
+            BaikirutoSettings.debug { info("[Baikiruto][DEBUG][EQUIP_RIGHTCLICK] player=${event.player.name} action=${event.action} item=${managed.item.id} slot=$armorSlot checking ownership...") }
+        }
+        when (ensureOwnership(managed, event.player)) {
             is OwnershipValidation.Denied -> {
                 event.isCancelled = true
+                if (isRightClick && armorSlot != null) {
+                    BaikirutoSettings.debug { info("[Baikiruto][DEBUG][EQUIP_RIGHTCLICK] player=${event.player.name} item=${managed.item.id} slot=$armorSlot -> DENIED") }
+                }
                 return
             }
             is OwnershipValidation.Changed -> {
@@ -149,8 +170,16 @@ object ItemActionListener {
                 } else {
                     event.player.inventory.setItemInMainHand(rebound)
                 }
+                if (isRightClick && armorSlot != null) {
+                    scheduleArmorBindSync(event.player, managed, rebound)
+                    BaikirutoSettings.debug { info("[Baikiruto][DEBUG][EQUIP_RIGHTCLICK] player=${event.player.name} item=${managed.item.id} slot=$armorSlot -> CHANGED (auto-bind)") }
+                }
             }
-            OwnershipValidation.Pass -> Unit
+            OwnershipValidation.Pass -> {
+                if (isRightClick && armorSlot != null) {
+                    BaikirutoSettings.debug { info("[Baikiruto][DEBUG][EQUIP_RIGHTCLICK] player=${event.player.name} item=${managed.item.id} slot=$armorSlot -> PASS") }
+                }
+            }
         }
         if (ItemCooldownFeature.shouldBlock(managed.stream, event.player, triggers)) {
             event.isCancelled = true
@@ -571,7 +600,7 @@ object ItemActionListener {
 
     // ── 装备穿戴/脱下检测 ──
 
-    @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @SubscribeEvent(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onArmorClick(event: InventoryClickEvent) {
         val player = event.whoClicked as? Player ?: return
         // 仅处理玩家背包中的装备槽操作
@@ -584,9 +613,13 @@ object ItemActionListener {
             else -> null
         }
         if (armorSlotIndex != null) {
+            BaikirutoSettings.debug {
+                info("[Baikiruto][DEBUG][EQUIP_CLICK] player=${player.name} rawSlot=${event.rawSlot} slot=$armorSlotIndex click=${event.click} currentItem=${event.currentItem?.type} cursor=${event.cursor?.type}")
+            }
             // 直接点击装备槽
             if (handleEquipSlotChange(player, armorSlotIndex, event.currentItem, event.cursor, event)) {
                 event.isCancelled = true
+                BaikirutoSettings.debug { info("[Baikiruto][DEBUG][EQUIP_CLICK] player=${player.name} slot=$armorSlotIndex -> CANCELLED (ownership denied)") }
             }
             return
         }
@@ -594,19 +627,28 @@ object ItemActionListener {
         if (event.isShiftClick && event.currentItem != null) {
             val targetSlot = resolveArmorSlot(event.currentItem) ?: return
             val managed = resolve(event.currentItem) ?: return
+            BaikirutoSettings.debug { info("[Baikiruto][DEBUG][EQUIP_SHIFT] player=${player.name} item=${managed.item.id} targetSlot=$targetSlot") }
             // 绑定检查：阻止非绑定玩家穿戴
+            var ownershipChanged = false
             when (ensureOwnership(managed, player)) {
                 is OwnershipValidation.Denied -> {
                     event.isCancelled = true
+                    BaikirutoSettings.debug { info("[Baikiruto][DEBUG][EQUIP_SHIFT] player=${player.name} item=${managed.item.id} -> CANCELLED (ownership denied)") }
                     return
                 }
-                is OwnershipValidation.Changed -> Unit
+                is OwnershipValidation.Changed -> ownershipChanged = true
                 OwnershipValidation.Pass -> Unit
             }
             val context = linkedMapOf<String, Any?>("slot" to targetSlot)
             val outcome = dispatch(managed, listOf(ItemScriptTrigger.EQUIP), player, event, context)
-            if (outcome.changed) {
-                // Shift-click 后物品会自动移动，不需要手动更新
+            if (ownershipChanged || outcome.changed) {
+                // 绑定变更或脚本修改后，延迟一 tick 回写到目标装备槽
+                val updated = managed.stream.toItemStack()
+                val targetSlotCopy = targetSlot
+                submit(delay = 1) {
+                    setArmorSlot(player, targetSlotCopy, updated)
+                    player.updateInventory()
+                }
             }
         }
     }
@@ -624,10 +666,18 @@ object ItemActionListener {
     ): Boolean {
         // 穿戴前先检查绑定，避免在拒绝时误触发 UNEQUIP 脚本
         val cursorManaged = resolve(cursorItem)
+        var ownershipChanged = false
         if (cursorManaged != null) {
+            BaikirutoSettings.debug { info("[Baikiruto][DEBUG][EQUIP_SLOT] player=${player.name} slot=$slot cursorItem=${cursorManaged.item.id} checking ownership...") }
             when (ensureOwnership(cursorManaged, player)) {
-                is OwnershipValidation.Denied -> return true
-                is OwnershipValidation.Changed -> Unit
+                is OwnershipValidation.Denied -> {
+                    BaikirutoSettings.debug { info("[Baikiruto][DEBUG][EQUIP_SLOT] player=${player.name} slot=$slot -> DENIED") }
+                    return true
+                }
+                is OwnershipValidation.Changed -> {
+                    ownershipChanged = true
+                    BaikirutoSettings.debug { info("[Baikiruto][DEBUG][EQUIP_SLOT] player=${player.name} slot=$slot -> CHANGED (auto-bind)") }
+                }
                 OwnershipValidation.Pass -> Unit
             }
         }
@@ -639,7 +689,21 @@ object ItemActionListener {
         // 穿戴：光标上有物品放入槽位
         if (cursorManaged != null) {
             val context = linkedMapOf<String, Any?>("slot" to slot)
-            dispatch(cursorManaged, listOf(ItemScriptTrigger.EQUIP), player, event, context)
+            val outcome = dispatch(cursorManaged, listOf(ItemScriptTrigger.EQUIP), player, event, context)
+            // 绑定变更或脚本修改了 stream 时，将数据回写到光标物品
+            if (ownershipChanged || outcome.changed) {
+                val updated = cursorManaged.stream.toItemStack()
+                val inventoryEvent = event as? InventoryClickEvent
+                if (inventoryEvent != null) {
+                    inventoryEvent.setCursor(updated)
+                } else {
+                    val slotCopy = slot
+                    submit(delay = 1) {
+                        setArmorSlot(player, slotCopy, updated)
+                        player.updateInventory()
+                    }
+                }
+            }
         }
         return false
     }
@@ -653,6 +717,37 @@ object ItemActionListener {
             typeName.endsWith("_LEGGINGS") -> "LEGS"
             typeName.endsWith("_BOOTS") -> "FEET"
             else -> null
+        }
+    }
+
+    private fun setArmorSlot(player: Player, slot: String, itemStack: ItemStack) {
+        when (slot) {
+            "HEAD" -> player.inventory.helmet = itemStack
+            "CHEST" -> player.inventory.chestplate = itemStack
+            "LEGS" -> player.inventory.leggings = itemStack
+            "FEET" -> player.inventory.boots = itemStack
+        }
+    }
+
+    /**
+     * 右键穿戴装备时，Bukkit 在事件处理之后才将物品从主手移到装备槽。
+     * 延迟一 tick 检查目标装备槽是否已被穿戴，如果是则用带绑定数据的版本覆盖。
+     */
+    private fun scheduleArmorBindSync(player: Player, managed: ManagedItem, updated: ItemStack) {
+        val targetSlot = resolveArmorSlot(updated) ?: return
+        submit(delay = 1) {
+            if (!player.isOnline) return@submit
+            val current = when (targetSlot) {
+                "HEAD" -> player.inventory.helmet
+                "CHEST" -> player.inventory.chestplate
+                "LEGS" -> player.inventory.leggings
+                "FEET" -> player.inventory.boots
+                else -> null
+            }
+            // 只有当装备槽确实被穿上了同类物品时才覆盖
+            if (current != null && !current.isAir() && current.type == updated.type) {
+                setArmorSlot(player, targetSlot, updated)
+            }
         }
     }
 
@@ -813,6 +908,7 @@ object ItemActionListener {
 
     private fun ensureOwnership(managed: ManagedItem, player: Player?): OwnershipValidation {
         val result = ItemUniqueFeature.checkOwnership(managed.stream, player)
+        BaikirutoSettings.debug { info("[Baikiruto][DEBUG][OWNERSHIP] item=${managed.item.id} player=${player?.name} allowed=${result.allowed} changed=${result.changed} owner=${result.owner}") }
         if (!result.allowed) {
             val customMessage = ItemUniqueFeature.customDenyMessage(managed.stream)
             if (customMessage != null) {

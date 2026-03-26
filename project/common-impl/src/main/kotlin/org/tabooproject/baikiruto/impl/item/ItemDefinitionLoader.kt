@@ -11,6 +11,7 @@ import org.tabooproject.baikiruto.core.item.ItemModel
 import org.tabooproject.baikiruto.core.item.ItemScriptHooks
 import org.tabooproject.baikiruto.core.item.Meta
 import org.tabooproject.baikiruto.core.item.event.PluginReloadEvent
+import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
@@ -29,7 +30,13 @@ import java.util.concurrent.CopyOnWriteArraySet
 
 object ItemDefinitionLoader {
 
-    private const val DEFAULT_ITEM_FILE = "items/example.yml"
+    private val defaultItemFiles = listOf(
+        "items/example.yml",
+        "items/blackbox/pipeline.yml",
+        "items/blackbox/components.yml",
+        "items/blackbox/meta.yml",
+        "items/blackbox/triggers.yml"
+    )
     private const val DEFAULT_DISPLAY_FILE = "display/def.yml"
     private const val LEGACY_COLOR_CODES = "0123456789AaBbCcDdEeFfKkLlMmNnOoRrXx"
     private const val LOCKED_DATA_PATHS_KEY = "__locked_data_paths__"
@@ -39,7 +46,7 @@ object ItemDefinitionLoader {
 
     @Awake(LifeCycle.ENABLE)
     private fun init() {
-        releaseResourceFile(DEFAULT_ITEM_FILE)
+        defaultItemFiles.forEach(::releaseResourceFile)
         releaseResourceFile(DEFAULT_DISPLAY_FILE)
     }
 
@@ -1283,6 +1290,9 @@ object ItemDefinitionLoader {
             }
         }
         val attributes = parseAttributes(section.getConfigurationSection("attribute"))
+        BaikirutoSettings.debug {
+            console().sendMessage("[Baikiruto/Debug] parseMetaEffects(ConfigurationSection): attribute section=${section.getConfigurationSection("attribute")?.getKeys(false)}, parsed attributes=$attributes")
+        }
         if (attributes.isNotEmpty()) {
             effects["attributes"] = attributes
         }
@@ -1355,6 +1365,9 @@ object ItemDefinitionLoader {
                 effects["cooldown"] = ticks
             }
         }
+        BaikirutoSettings.debug {
+            console().sendMessage("[Baikiruto/Debug] parseMetaEffects(ConfigurationSection): final effects keys=${effects.keys}, has attributes=${"attributes" in effects}")
+        }
         return effects
     }
 
@@ -1398,6 +1411,9 @@ object ItemDefinitionLoader {
             }
         }
         val attributes = parseAttributes(anyToMap(section["attribute"]))
+        BaikirutoSettings.debug {
+            console().sendMessage("[Baikiruto/Debug] parseMetaEffects(Map): attribute raw=${section["attribute"]}, parsed attributes=$attributes")
+        }
         if (attributes.isNotEmpty()) {
             effects["attributes"] = attributes
         }
@@ -1460,6 +1476,9 @@ object ItemDefinitionLoader {
             if (ticks != null && ticks > 0L) {
                 effects["cooldown"] = ticks
             }
+        }
+        BaikirutoSettings.debug {
+            console().sendMessage("[Baikiruto/Debug] parseMetaEffects(Map): final effects keys=${effects.keys}, has attributes=${"attributes" in effects}")
         }
         return effects
     }
@@ -1750,46 +1769,105 @@ object ItemDefinitionLoader {
 
     private fun parseAttributes(section: ConfigurationSection?): List<Map<String, Any>> {
         if (section == null) {
+            BaikirutoSettings.debug {
+                console().sendMessage("[Baikiruto/Debug] parseAttributes(ConfigurationSection): section is null, skipping")
+            }
             return emptyList()
+        }
+        BaikirutoSettings.debug {
+            console().sendMessage("[Baikiruto/Debug] parseAttributes(ConfigurationSection): keys=${section.getKeys(false)}")
         }
         val values = arrayListOf<Map<String, Any>>()
         section.getKeys(false).forEach { slotKey ->
-            val slotSection = section.getConfigurationSection(slotKey) ?: return@forEach
+            val slotSection = section.getConfigurationSection(slotKey)
+            if (slotSection == null) {
+                BaikirutoSettings.debug {
+                    console().sendMessage("[Baikiruto/Debug]   slot=$slotKey -> no sub-section, skipping")
+                }
+                return@forEach
+            }
             val normalizedSlot = normalizeAttributeSlot(slotKey)
+            BaikirutoSettings.debug {
+                console().sendMessage("[Baikiruto/Debug]   slot=$slotKey -> normalized=$normalizedSlot, attrKeys=${slotSection.getKeys(false)}")
+            }
             slotSection.getKeys(false).forEach { attrKey ->
-                val raw = slotSection.get(attrKey) ?: return@forEach
-                val parsed = parseAttributeModifier(raw.toString()) ?: return@forEach
-                values += linkedMapOf(
+                val raw = slotSection.get(attrKey)
+                if (raw == null) {
+                    BaikirutoSettings.debug {
+                        console().sendMessage("[Baikiruto/Debug]     attr=$attrKey -> raw value is null, skipping")
+                    }
+                    return@forEach
+                }
+                val parsed = parseAttributeModifier(raw.toString())
+                if (parsed == null) {
+                    BaikirutoSettings.debug {
+                        console().sendMessage("[Baikiruto/Debug]     attr=$attrKey -> parseAttributeModifier('$raw') returned null, skipping")
+                    }
+                    return@forEach
+                }
+                val entry = linkedMapOf(
                     "attribute" to normalizeAttributeName(attrKey),
                     "amount" to parsed.first,
                     "operation" to parsed.second,
                     "slot" to normalizedSlot
                 )
+                BaikirutoSettings.debug {
+                    console().sendMessage("[Baikiruto/Debug]     attr=$attrKey -> $entry")
+                }
+                values += entry
             }
+        }
+        BaikirutoSettings.debug {
+            console().sendMessage("[Baikiruto/Debug] parseAttributes(ConfigurationSection): result=${values.size} entries: $values")
         }
         return values
     }
 
     private fun parseAttributes(section: Map<String, Any?>): List<Map<String, Any>> {
         if (section.isEmpty()) {
+            BaikirutoSettings.debug {
+                console().sendMessage("[Baikiruto/Debug] parseAttributes(Map): section is empty, skipping")
+            }
             return emptyList()
+        }
+        BaikirutoSettings.debug {
+            console().sendMessage("[Baikiruto/Debug] parseAttributes(Map): keys=${section.keys}")
         }
         val values = arrayListOf<Map<String, Any>>()
         section.forEach { (slotKey, rawAttributes) ->
             val attributes = anyToMap(rawAttributes)
             if (attributes.isEmpty()) {
+                BaikirutoSettings.debug {
+                    console().sendMessage("[Baikiruto/Debug]   slot=$slotKey -> attributes map is empty, skipping")
+                }
                 return@forEach
             }
             val normalizedSlot = normalizeAttributeSlot(slotKey)
+            BaikirutoSettings.debug {
+                console().sendMessage("[Baikiruto/Debug]   slot=$slotKey -> normalized=$normalizedSlot, attrKeys=${attributes.keys}")
+            }
             attributes.forEach { (attrKey, rawValue) ->
-                val parsed = parseAttributeModifier(rawValue?.toString().orEmpty()) ?: return@forEach
-                values += linkedMapOf(
+                val parsed = parseAttributeModifier(rawValue?.toString().orEmpty())
+                if (parsed == null) {
+                    BaikirutoSettings.debug {
+                        console().sendMessage("[Baikiruto/Debug]     attr=$attrKey -> parseAttributeModifier('$rawValue') returned null, skipping")
+                    }
+                    return@forEach
+                }
+                val entry = linkedMapOf(
                     "attribute" to normalizeAttributeName(attrKey),
                     "amount" to parsed.first,
                     "operation" to parsed.second,
                     "slot" to normalizedSlot
                 )
+                BaikirutoSettings.debug {
+                    console().sendMessage("[Baikiruto/Debug]     attr=$attrKey -> $entry")
+                }
+                values += entry
             }
+        }
+        BaikirutoSettings.debug {
+            console().sendMessage("[Baikiruto/Debug] parseAttributes(Map): result=${values.size} entries: $values")
         }
         return values
     }

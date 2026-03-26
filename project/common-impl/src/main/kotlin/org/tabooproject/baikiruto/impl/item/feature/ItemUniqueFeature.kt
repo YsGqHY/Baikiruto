@@ -2,8 +2,10 @@ package org.tabooproject.baikiruto.impl.item.feature
 
 import org.bukkit.entity.Player
 import org.tabooproject.baikiruto.core.item.ItemStream
+import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import org.tabooproject.baikiruto.impl.item.DefaultItemStream
 import taboolib.common.platform.function.console
+import taboolib.common.platform.function.info
 import taboolib.module.lang.asLangText
 import java.util.UUID
 
@@ -23,40 +25,64 @@ object ItemUniqueFeature {
     )
 
     fun prepare(stream: DefaultItemStream, player: Player?) {
-        if (!isEnabled(stream)) {
+        val enabled = isEnabled(stream)
+        val bindPlayer = isBindPlayer(stream)
+        BaikirutoSettings.debug {
+            info("[Baikiruto][DEBUG][UNIQUE_PREPARE] item=${stream.itemId} enabled=$enabled bindPlayer=$bindPlayer player=${player?.name} existingOwner=${ownerName(stream)} existingUuid=${stream.getRuntimeData(KEY_UUID)}")
+        }
+        if (!enabled) {
             return
         }
         if (stream.getRuntimeData(KEY_UUID) == null) {
-            stream.setRuntimeData(KEY_UUID, UUID.randomUUID().toString())
+            val uuid = UUID.randomUUID().toString()
+            stream.setRuntimeData(KEY_UUID, uuid)
+            BaikirutoSettings.debug { info("[Baikiruto][DEBUG][UNIQUE_PREPARE] item=${stream.itemId} generated uuid=$uuid") }
         }
         if (stream.getRuntimeData(KEY_DATE) == null) {
             stream.setRuntimeData(KEY_DATE, System.currentTimeMillis())
         }
-        if (isBindPlayer(stream) && player != null) {
-            stream.setRuntimeData(KEY_PLAYER, player.name)
+        if (bindPlayer && player != null) {
+            val existingOwner = ownerName(stream)
+            if (existingOwner == null) {
+                stream.setRuntimeData(KEY_PLAYER, player.name)
+                BaikirutoSettings.debug { info("[Baikiruto][DEBUG][UNIQUE_PREPARE] item=${stream.itemId} first bind -> owner=${player.name}") }
+            } else {
+                BaikirutoSettings.debug { info("[Baikiruto][DEBUG][UNIQUE_PREPARE] item=${stream.itemId} already bound to=$existingOwner, skip overwrite") }
+            }
         }
     }
 
     fun checkOwnership(stream: ItemStream, player: Player?): OwnershipResult {
-        if (!isEnabled(stream)) {
+        val enabled = isEnabled(stream)
+        val bindPlayer = isBindPlayer(stream)
+        val currentOwner = owner(stream)
+        BaikirutoSettings.debug {
+            info("[Baikiruto][DEBUG][UNIQUE_CHECK] item=${stream.itemId} enabled=$enabled bindPlayer=$bindPlayer owner=$currentOwner player=${player?.name}")
+        }
+        if (!enabled) {
             return OwnershipResult(allowed = true, changed = false, owner = null)
         }
-        if (!isBindPlayer(stream)) {
-            return OwnershipResult(allowed = true, changed = false, owner = owner(stream))
+        if (!bindPlayer) {
+            return OwnershipResult(allowed = true, changed = false, owner = currentOwner)
         }
-        val owner = owner(stream)
+        val owner = currentOwner
         if (owner.isNullOrBlank()) {
             if (player == null) {
+                BaikirutoSettings.debug { info("[Baikiruto][DEBUG][UNIQUE_CHECK] item=${stream.itemId} -> DENIED (no owner, no player)") }
                 return OwnershipResult(allowed = false, changed = false, owner = null)
             }
             stream.setRuntimeData(KEY_PLAYER, player.name)
+            BaikirutoSettings.debug { info("[Baikiruto][DEBUG][UNIQUE_CHECK] item=${stream.itemId} -> auto-bind to ${player.name}") }
             return OwnershipResult(allowed = true, changed = true, owner = player.name)
         }
         if (player == null) {
+            BaikirutoSettings.debug { info("[Baikiruto][DEBUG][UNIQUE_CHECK] item=${stream.itemId} -> DENIED (owner=$owner, no player)") }
             return OwnershipResult(allowed = false, changed = false, owner = owner)
         }
+        val allowed = owner.equals(player.name, ignoreCase = true)
+        BaikirutoSettings.debug { info("[Baikiruto][DEBUG][UNIQUE_CHECK] item=${stream.itemId} -> allowed=$allowed (owner=$owner, player=${player.name})") }
         return OwnershipResult(
-            allowed = owner.equals(player.name, ignoreCase = true),
+            allowed = allowed,
             changed = false,
             owner = owner
         )
@@ -88,7 +114,12 @@ object ItemUniqueFeature {
     }
 
     private fun isEnabled(stream: ItemStream): Boolean {
-        return asBoolean(stream.getRuntimeData(KEY_ENABLED)) ?: false
+        val raw = stream.getRuntimeData(KEY_ENABLED)
+        val result = asBoolean(raw) ?: false
+        if (raw == null) {
+            BaikirutoSettings.debug { info("[Baikiruto][DEBUG][UNIQUE_ENABLED] item=${stream.itemId} raw=null -> false (key '$KEY_ENABLED' not in runtimeData)") }
+        }
+        return result
     }
 
     private fun isBindPlayer(stream: ItemStream): Boolean {

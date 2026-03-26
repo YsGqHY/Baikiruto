@@ -66,7 +66,7 @@ object ItemStreamTransport {
     private fun encodeMap(values: Map<String, Any?>): ItemTag {
         val encoded = ItemTag()
         values.forEach { (key, value) ->
-            encodeData(value)?.let { encoded[key] = it }
+            encodeData(value)?.let { encoded.put(key, it) }
         }
         return encoded
     }
@@ -91,7 +91,7 @@ object ItemStreamTransport {
                 val map = ItemTag()
                 value.forEach { (k, v) ->
                     val key = k?.toString()?.takeIf { it.isNotBlank() } ?: return@forEach
-                    encodeData(v)?.let { map[key] = it }
+                    encodeData(v)?.let { map.put(key, it) }
                 }
                 map
             }

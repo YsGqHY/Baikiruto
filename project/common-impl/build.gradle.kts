@@ -1,5 +1,5 @@
 dependencies {
-    taboo("ink.ptms:um:1.1.5") { isTransitive = false }
+    compileOnly("ink.ptms:um:1.2.1")
     compileOnly(project(":project:common"))
     testImplementation(project(":project:common"))
     compileOnly("com.google.code.gson:gson:2.11.0")
@@ -17,10 +17,11 @@ dependencies {
     compileOnly("org.ow2.asm:asm:9.8")
     compileOnly("org.ow2.asm:asm-util:9.8")
     compileOnly("org.ow2.asm:asm-commons:9.8")
+    compileOnly("net.kyori:adventure-text-minimessage:4.17.0")
+    compileOnly("net.kyori:adventure-text-serializer-legacy:4.17.0")
     compileOnly(fileTree("libs"))
 }
 
 taboolib {
     subproject = true
-    relocate("ink.ptms.um","${group}.um")
 }

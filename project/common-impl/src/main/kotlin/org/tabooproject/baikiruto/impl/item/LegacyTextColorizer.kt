@@ -1,7 +1,8 @@
 package org.tabooproject.baikiruto.impl.item
 
+import net.kyori.adventure.text.minimessage.MiniMessage
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
-import java.lang.reflect.Modifier
 
 object LegacyTextColorizer {
 
@@ -35,7 +36,7 @@ object LegacyTextColorizer {
     }
 
     fun miniMessageAvailable(): Boolean {
-        return miniMessageAvailabilityOverride ?: MiniMessageRuntime.isAvailable()
+        return miniMessageAvailabilityOverride ?: MiniMessageBridge.available
     }
 
     internal fun setMiniMessageEnabledOverride(value: Boolean?) {
@@ -65,57 +66,28 @@ object LegacyTextColorizer {
             return source
         }
         val transformed = miniMessageTransformerOverride?.invoke(source)
-            ?: MiniMessageRuntime.serializeToLegacy(source)
+            ?: MiniMessageBridge.serializeToLegacy(source)
         return transformed ?: source
     }
 
-    private object MiniMessageRuntime {
+    /**
+     * 隔离 adventure 类引用，避免在没有 adventure 的服务端上触发 [NoClassDefFoundError]。
+     * 整个 object 只有在 [available] 为 true 时才会被访问内部方法。
+     */
+    private object MiniMessageBridge {
 
-        private val miniMessageClass by lazy {
-            resolveClass("net.kyori.adventure.text.minimessage.MiniMessage")
-        }
-
-        private val legacySerializerClass by lazy {
-            resolveClass("net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer")
-        }
-
-        private val miniMessageFactory by lazy {
-            miniMessageClass?.methods?.firstOrNull { method ->
-                method.name == "miniMessage" &&
-                    method.parameterCount == 0 &&
-                    Modifier.isStatic(method.modifiers)
-            }
-        }
-
-        private val legacySectionFactory by lazy {
-            legacySerializerClass?.methods?.firstOrNull { method ->
-                method.name == "legacySection" &&
-                    method.parameterCount == 0 &&
-                    Modifier.isStatic(method.modifiers)
-            }
-        }
-
-        fun isAvailable(): Boolean {
-            return miniMessageFactory != null && legacySectionFactory != null
-        }
+        val available: Boolean = runCatching {
+            Class.forName("net.kyori.adventure.text.minimessage.MiniMessage")
+            Class.forName("net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer")
+            true
+        }.getOrDefault(false)
 
         fun serializeToLegacy(source: String): String? {
-            val miniMessage = runCatching { miniMessageFactory?.invoke(null) }.getOrNull() ?: return null
-            val deserialize = miniMessage.javaClass.methods.firstOrNull { method ->
-                method.name == "deserialize" &&
-                    method.parameterCount == 1 &&
-                    method.parameterTypes[0] == String::class.java
-            } ?: return null
-            val component = runCatching { deserialize.invoke(miniMessage, source) }.getOrNull() ?: return null
-            val serializer = runCatching { legacySectionFactory?.invoke(null) }.getOrNull() ?: return null
-            val serialize = serializer.javaClass.methods.firstOrNull { method ->
-                method.name == "serialize" && method.parameterCount == 1
-            } ?: return null
-            return runCatching { serialize.invoke(serializer, component) as? String }.getOrNull()
-        }
-
-        private fun resolveClass(name: String): Class<*>? {
-            return runCatching { Class.forName(name, false, javaClass.classLoader) }.getOrNull()
+            if (!available) return null
+            return runCatching {
+                val component = MiniMessage.miniMessage().deserialize(source)
+                LegacyComponentSerializer.legacySection().serialize(component)
+            }.getOrNull()
         }
     }
 

@@ -9,6 +9,11 @@ plugins {
 
 taboolib {
     relocate("org.tabooproject.fluxon", "org.tabooproject.baikiruto.impl.script.fluxon")
+    relocate("ink.ptms.um","${group}.um")
+}
+
+dependencies {
+    taboo("ink.ptms:um:1.2.1")
 }
 
 val pluginBaseName = rootProject.name

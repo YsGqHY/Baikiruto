@@ -4,6 +4,7 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.ItemMeta
 import org.tabooproject.baikiruto.core.version.BaseItemMetaVersionAdapter
 import org.tabooproject.baikiruto.core.version.DataComponentVersionAdapter
+import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
 import taboolib.common.platform.function.console
@@ -18,6 +19,9 @@ object VersionAdapterService {
                 override val supportsCustomModelData: Boolean
                     get() = currentProfile().supportsCustomModelData && !currentProfile().supportsItemModel
 
+                override val debugEnabled: Boolean
+                    get() = BaikirutoSettings.debug
+
                 override fun applyItemModel(itemMeta: ItemMeta, modelId: String) {
                     if (currentProfile().supportsItemModel) {
                         super.applyItemModel(itemMeta, modelId)
@@ -28,6 +32,9 @@ object VersionAdapterService {
             object : BaseItemMetaVersionAdapter() {
                 override val supportsCustomModelData: Boolean
                     get() = currentProfile().supportsCustomModelData && !currentProfile().supportsItemModel
+
+                override val debugEnabled: Boolean
+                    get() = BaikirutoSettings.debug
 
                 override fun applyItemModel(itemMeta: ItemMeta, modelId: String) {
                     if (currentProfile().supportsItemModel) {
