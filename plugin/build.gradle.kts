@@ -35,8 +35,6 @@ val preparePublishBuildApi by tasks.registering(Exec::class) {
     commandLine(
         gradleWrapper,
         "--no-daemon",
-        "-g",
-        buildApiGradleUserHome.get().asFile.absolutePath,
         "taboolibBuildApi",
         "-PDeleteCode"
     )
@@ -65,11 +63,10 @@ publishing {
         mavenLocal()
         maven {
             name = "aeolianReleases"
-            url = uri("http://repo.aeoliancloud.com/repository/releases")
-            isAllowInsecureProtocol = true
+            url = uri("https://repo.aeoliancloud.com/repository/releases")
             credentials {
-                username = (project.findProperty("aeolianUsername") as String?) ?: ""
-                password = (project.findProperty("aeolianPassword") as String?) ?: ""
+                username = project.findProperty("aeolianUsername").toString()
+                password = project.findProperty("aeolianPassword").toString()
             }
             authentication {
                 create<BasicAuthentication>("basic")
