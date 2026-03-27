@@ -269,6 +269,10 @@ abstract class BaseItemMetaVersionAdapter {
             debugLog("[Baikiruto/Debug] applyAttributes: addAttributeModifier method not found on ${itemMeta.javaClass.name}, skipping")
             return
         }
+
+        // 清除已有的所有 attribute modifiers，防止重复构建时叠加
+        clearExistingAttributeModifiers(itemMeta)
+
         debugLog("[Baikiruto/Debug] applyAttributes: processing ${entries.count()} entries")
         entries.forEach { rawEntry ->
             val entry = rawEntry as? Map<*, *>
@@ -307,9 +311,11 @@ abstract class BaseItemMetaVersionAdapter {
                 debugLog("[Baikiruto/Debug]   attr=$attributeName -> slot '$slotName' not found (available: ${EquipmentSlot.values().map { it.name }}), skipping")
                 return@forEach
             }
-            debugLog("[Baikiruto/Debug]   attr=$attributeName, amount=$amount, operation=$operation, slot=$slot -> creating modifier")
+            // 使用确定性 key：基于 attribute 名和 slot，避免随机 UUID 导致重复叠加
+            val modifierKey = buildDeterministicModifierKey(attributeName, slotName)
+            debugLog("[Baikiruto/Debug]   attr=$attributeName, amount=$amount, operation=$operation, slot=$slot, key=$modifierKey -> creating modifier")
             val modifier = Attributes.createAttributeModifier(
-                name = "baikiruto.attr",
+                name = modifierKey,
                 amount = amount,
                 operation = operation,
                 equipmentSlot = slot
@@ -321,6 +327,75 @@ abstract class BaseItemMetaVersionAdapter {
             debugLog("[Baikiruto/Debug]   attr=$attributeName -> modifier created: $modifier, invoking addAttributeModifier")
             val success = invokeWithReflexSucceeded(itemMeta, addMethod, attribute, modifier)
             debugLog("[Baikiruto/Debug]   attr=$attributeName -> addAttributeModifier result: $success")
+        }
+    }
+
+    /**
+     * 清除 ItemMeta 上所有已有的 attribute modifiers。
+     * 防止物品重复构建时 modifier 不断叠加。
+     */
+    private fun clearExistingAttributeModifiers(itemMeta: ItemMeta) {
+        // 优先尝试 1.13.2+ 的 getAttributeModifiers() 无参方法
+        val getModifiers = itemMeta.javaClass.methods.firstOrNull { method ->
+            method.name == "getAttributeModifiers" && method.parameterCount == 0
+        }
+        val removeMethod = itemMeta.javaClass.methods.firstOrNull { method ->
+            method.name == "removeAttributeModifier" && method.parameterCount == 2
+        }
+        if (getModifiers != null && removeMethod != null) {
+            val multimap = invokeWithReflex(itemMeta, getModifiers)
+            if (multimap != null) {
+                // Multimap<Attribute, AttributeModifier> -> entries()
+                val entriesMethod = multimap.javaClass.methods.firstOrNull { method ->
+                    method.name == "entries" && method.parameterCount == 0
+                }
+                if (entriesMethod != null) {
+                    val entries = invokeWithReflex(multimap, entriesMethod) as? Collection<*>
+                    entries?.toList()?.forEach { entry ->
+                        // Map.Entry<Attribute, AttributeModifier>
+                        val getKey = entry?.javaClass?.methods?.firstOrNull { it.name == "getKey" && it.parameterCount == 0 }
+                        val getValue = entry?.javaClass?.methods?.firstOrNull { it.name == "getValue" && it.parameterCount == 0 }
+                        if (getKey != null && getValue != null && entry != null) {
+                            val attr = invokeWithReflex(entry, getKey)
+                            val mod = invokeWithReflex(entry, getValue)
+                            if (attr != null && mod != null) {
+                                invokeWithReflexSucceeded(itemMeta, removeMethod, attr, mod)
+                            }
+                        }
+                    }
+                    debugLog("[Baikiruto/Debug] applyAttributes: cleared ${entries?.size ?: 0} existing attribute modifiers")
+                    return
+                }
+            }
+        }
+
+        // 回退：尝试按 EquipmentSlot 逐个清除
+        val removeBySlot = itemMeta.javaClass.methods.firstOrNull { method ->
+            method.name == "removeAttributeModifier" && method.parameterCount == 1 &&
+                method.parameterTypes[0] == EquipmentSlot::class.java
+        }
+        if (removeBySlot != null) {
+            EquipmentSlot.values().forEach { slot ->
+                runCatching { invokeWithReflexSucceeded(itemMeta, removeBySlot, slot) }
+            }
+            debugLog("[Baikiruto/Debug] applyAttributes: cleared existing attribute modifiers via slot-based removal")
+            return
+        }
+
+        debugLog("[Baikiruto/Debug] applyAttributes: no method available to clear existing attribute modifiers")
+    }
+
+    /**
+     * 构建确定性的 modifier key，基于 attribute 名和 slot。
+     * 确保同一 attribute+slot 组合始终使用相同的 key，避免重复叠加。
+     */
+    private fun buildDeterministicModifierKey(attributeName: String, slotName: String?): String {
+        val normalized = attributeName.lowercase(Locale.ENGLISH)
+            .removePrefix("generic_")
+        return if (slotName != null) {
+            "baikiruto.${normalized}.${slotName.lowercase(Locale.ENGLISH)}"
+        } else {
+            "baikiruto.${normalized}"
         }
     }
 

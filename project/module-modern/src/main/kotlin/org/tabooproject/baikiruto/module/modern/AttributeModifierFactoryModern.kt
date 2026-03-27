@@ -27,7 +27,9 @@ object AttributeModifierFactoryModern : AttributeModifierFactory {
         equipmentSlot: EquipmentSlot?
     ): AttributeModifier? {
         debugLog("[Baikiruto/Debug] ModernFactory.create: name=$name, amount=$amount, operation=$operation, slot=$equipmentSlot")
-        val key = NamespacedKey.fromString("baikiruto:${UUID.randomUUID().toString().replace("-", "")}")
+        // 使用确定性 key：将 name 中的 '.' 替换为 '/'，确保同一 attribute+slot 组合始终使用相同的 key
+        val keyString = name.replace('.', '/').lowercase()
+        val key = NamespacedKey.fromString("baikiruto:$keyString")
         if (key != null) {
             if (equipmentSlot != null) {
                 runCatching {
@@ -50,7 +52,7 @@ object AttributeModifierFactoryModern : AttributeModifierFactory {
                 debugLog("[Baikiruto/Debug] ModernFactory: NamespacedKey+ANY constructor failed: ${it.message}")
             }
         } else {
-            debugLog("[Baikiruto/Debug] ModernFactory: NamespacedKey.fromString returned null")
+            debugLog("[Baikiruto/Debug] ModernFactory: NamespacedKey.fromString returned null for key '$keyString'")
         }
         if (equipmentSlot != null) {
             runCatching {
