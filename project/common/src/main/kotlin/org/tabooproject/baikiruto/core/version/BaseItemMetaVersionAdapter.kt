@@ -153,7 +153,11 @@ abstract class BaseItemMetaVersionAdapter {
         colorValue(runtimeData["color"])?.let { applyColor(itemMeta, it) }
         colorValue(runtimeData["potion-color"] ?: runtimeData["potioncolor"])?.let { applyPotionColor(itemMeta, it) }
         applyPotionBase(itemMeta, runtimeData)
-        applyAttributes(itemMeta, runtimeData["attributes"])
+        val replaceAttributes = booleanValue(
+            runtimeData["attributes-replace-mode"]
+                ?: runtimeData["attributes-replace"]
+        ) ?: false
+        applyAttributes(itemMeta, runtimeData["attributes"], replaceAttributes)
         runtimeData["item-model"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
             applyItemModel(itemMeta, it)
         }
@@ -247,7 +251,7 @@ abstract class BaseItemMetaVersionAdapter {
         invokeObjectSetter(itemMeta, "setBasePotionData", potionData)
     }
 
-    protected open fun applyAttributes(itemMeta: ItemMeta, rawAttributes: Any?) {
+    protected open fun applyAttributes(itemMeta: ItemMeta, rawAttributes: Any?, replaceAll: Boolean = false) {
         if (rawAttributes == null) {
             debugLog("[Baikiruto/Debug] applyAttributes: rawAttributes is null, skipping")
             return
@@ -270,8 +274,11 @@ abstract class BaseItemMetaVersionAdapter {
             return
         }
 
-        // 清除已有的所有 attribute modifiers，防止重复构建时叠加
-        clearExistingAttributeModifiers(itemMeta)
+        // 清除已有的 attribute modifiers，防止重复构建时叠加
+        // replaceAll=true: 清除全部（包括原版属性）
+        // replaceAll=false: 仅清除 Baikiruto 添加的 modifiers，保留原版属性
+        clearExistingAttributeModifiers(itemMeta, replaceAll)
+        debugLog("[Baikiruto/Debug] applyAttributes: replaceAll=$replaceAll")
 
         debugLog("[Baikiruto/Debug] applyAttributes: processing ${entries.count()} entries")
         entries.forEach { rawEntry ->
@@ -331,10 +338,11 @@ abstract class BaseItemMetaVersionAdapter {
     }
 
     /**
-     * 清除 ItemMeta 上所有已有的 attribute modifiers。
-     * 防止物品重复构建时 modifier 不断叠加。
+     * 清除 ItemMeta 上已有的 attribute modifiers，防止物品重复构建时 modifier 不断叠加。
+     *
+     * @param replaceAll true = 清除全部 modifiers（包括原版属性），false = 仅清除 Baikiruto 添加的 modifiers
      */
-    private fun clearExistingAttributeModifiers(itemMeta: ItemMeta) {
+    private fun clearExistingAttributeModifiers(itemMeta: ItemMeta, replaceAll: Boolean) {
         // 优先尝试 1.13.2+ 的 getAttributeModifiers() 无参方法
         val getModifiers = itemMeta.javaClass.methods.firstOrNull { method ->
             method.name == "getAttributeModifiers" && method.parameterCount == 0
@@ -351,6 +359,7 @@ abstract class BaseItemMetaVersionAdapter {
                 }
                 if (entriesMethod != null) {
                     val entries = invokeWithReflex(multimap, entriesMethod) as? Collection<*>
+                    var removedCount = 0
                     entries?.toList()?.forEach { entry ->
                         // Map.Entry<Attribute, AttributeModifier>
                         val getKey = entry?.javaClass?.methods?.firstOrNull { it.name == "getKey" && it.parameterCount == 0 }
@@ -359,30 +368,65 @@ abstract class BaseItemMetaVersionAdapter {
                             val attr = invokeWithReflex(entry, getKey)
                             val mod = invokeWithReflex(entry, getValue)
                             if (attr != null && mod != null) {
-                                invokeWithReflexSucceeded(itemMeta, removeMethod, attr, mod)
+                                if (replaceAll || isBaikirutoModifier(mod)) {
+                                    invokeWithReflexSucceeded(itemMeta, removeMethod, attr, mod)
+                                    removedCount++
+                                }
                             }
                         }
                     }
-                    debugLog("[Baikiruto/Debug] applyAttributes: cleared ${entries?.size ?: 0} existing attribute modifiers")
+                    debugLog("[Baikiruto/Debug] applyAttributes: cleared $removedCount/${entries?.size ?: 0} existing attribute modifiers (replaceAll=$replaceAll)")
                     return
                 }
             }
         }
 
-        // 回退：尝试按 EquipmentSlot 逐个清除
-        val removeBySlot = itemMeta.javaClass.methods.firstOrNull { method ->
-            method.name == "removeAttributeModifier" && method.parameterCount == 1 &&
-                method.parameterTypes[0] == EquipmentSlot::class.java
-        }
-        if (removeBySlot != null) {
-            EquipmentSlot.values().forEach { slot ->
-                runCatching { invokeWithReflexSucceeded(itemMeta, removeBySlot, slot) }
+        // 回退：replaceAll 模式下尝试按 EquipmentSlot 逐个清除
+        // 非 replaceAll 模式下无法精确区分，跳过清除（依赖确定性 key 去重）
+        if (replaceAll) {
+            val removeBySlot = itemMeta.javaClass.methods.firstOrNull { method ->
+                method.name == "removeAttributeModifier" && method.parameterCount == 1 &&
+                    method.parameterTypes[0] == EquipmentSlot::class.java
             }
-            debugLog("[Baikiruto/Debug] applyAttributes: cleared existing attribute modifiers via slot-based removal")
-            return
+            if (removeBySlot != null) {
+                EquipmentSlot.values().forEach { slot ->
+                    runCatching { invokeWithReflexSucceeded(itemMeta, removeBySlot, slot) }
+                }
+                debugLog("[Baikiruto/Debug] applyAttributes: cleared existing attribute modifiers via slot-based removal (replaceAll)")
+                return
+            }
         }
 
-        debugLog("[Baikiruto/Debug] applyAttributes: no method available to clear existing attribute modifiers")
+        debugLog("[Baikiruto/Debug] applyAttributes: ${if (replaceAll) "no method available to clear" else "non-replace mode, relying on deterministic keys"}")
+    }
+
+    /**
+     * 判断一个 AttributeModifier 是否由 Baikiruto 创建。
+     * 通过检查 modifier 的 key（1.21+ NamespacedKey）或 name 前缀来识别。
+     */
+    private fun isBaikirutoModifier(modifier: Any): Boolean {
+        // 1.21+: 检查 NamespacedKey
+        val getKey = modifier.javaClass.methods.firstOrNull { method ->
+            method.name == "getKey" && method.parameterCount == 0
+        }
+        if (getKey != null) {
+            val key = runCatching { getKey.invoke(modifier) }.getOrNull()
+            val keyStr = key?.toString().orEmpty()
+            if (keyStr.startsWith("baikiruto:")) {
+                return true
+            }
+        }
+        // Legacy: 检查 name 前缀
+        val getName = modifier.javaClass.methods.firstOrNull { method ->
+            method.name == "getName" && method.parameterCount == 0
+        }
+        if (getName != null) {
+            val name = runCatching { getName.invoke(modifier) }.getOrNull()?.toString().orEmpty()
+            if (name.startsWith("baikiruto.")) {
+                return true
+            }
+        }
+        return false
     }
 
     /**

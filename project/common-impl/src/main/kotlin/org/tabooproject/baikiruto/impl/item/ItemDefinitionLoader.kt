@@ -1296,6 +1296,10 @@ object ItemDefinitionLoader {
         if (attributes.isNotEmpty()) {
             effects["attributes"] = attributes
         }
+        if (section.contains("attributes-replace-mode") || section.contains("attributes-replace")) {
+            effects["attributes-replace-mode"] = section.getBoolean("attributes-replace-mode",
+                section.getBoolean("attributes-replace", false))
+        }
 
         parsePotion(section.getConfigurationSection("potion")).forEach { (key, value) ->
             effects[key] = value
@@ -1416,6 +1420,11 @@ object ItemDefinitionLoader {
         }
         if (attributes.isNotEmpty()) {
             effects["attributes"] = attributes
+        }
+        val replaceMode = asBoolean(section["attributes-replace-mode"])
+            ?: asBoolean(section["attributes-replace"])
+        if (replaceMode != null) {
+            effects["attributes-replace-mode"] = replaceMode
         }
 
         parsePotion(anyToMap(section["potion"])).forEach { (key, value) ->
