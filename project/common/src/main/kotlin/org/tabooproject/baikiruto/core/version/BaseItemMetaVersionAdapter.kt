@@ -157,7 +157,7 @@ abstract class BaseItemMetaVersionAdapter {
             runtimeData["attributes-replace-mode"]
                 ?: runtimeData["attributes-replace"]
         ) ?: false
-        applyAttributes(itemMeta, runtimeData["attributes"], replaceAttributes)
+        applyAttributes(itemMeta, runtimeData["attributes"], replaceAttributes, itemStack.type)
         runtimeData["item-model"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
             applyItemModel(itemMeta, it)
         }
@@ -251,7 +251,7 @@ abstract class BaseItemMetaVersionAdapter {
         invokeObjectSetter(itemMeta, "setBasePotionData", potionData)
     }
 
-    protected open fun applyAttributes(itemMeta: ItemMeta, rawAttributes: Any?, replaceAll: Boolean = false) {
+    protected open fun applyAttributes(itemMeta: ItemMeta, rawAttributes: Any?, replaceAll: Boolean = false, material: Material? = null) {
         if (rawAttributes == null) {
             debugLog("[Baikiruto/Debug] applyAttributes: rawAttributes is null, skipping")
             return
@@ -274,11 +274,25 @@ abstract class BaseItemMetaVersionAdapter {
             return
         }
 
+        // 在非 replaceAll 模式下，需要保留原版装备的默认属性。
+        // 在 1.21+ Data Component 系统中，一旦显式设置了 attribute_modifiers 组件，
+        // 原版默认属性就会被覆盖。因此需要先收集默认属性，清除后再加回去。
+        val defaultModifiers = if (!replaceAll && material != null) {
+            collectDefaultAttributeModifiers(material)
+        } else {
+            emptyList()
+        }
+
         // 清除已有的 attribute modifiers，防止重复构建时叠加
-        // replaceAll=true: 清除全部（包括原版属性）
-        // replaceAll=false: 仅清除 Baikiruto 添加的 modifiers，保留原版属性
         clearExistingAttributeModifiers(itemMeta, replaceAll)
-        debugLog("[Baikiruto/Debug] applyAttributes: replaceAll=$replaceAll")
+        debugLog("[Baikiruto/Debug] applyAttributes: replaceAll=$replaceAll, defaultModifiers=${defaultModifiers.size}")
+
+        // 先恢复原版默认属性
+        defaultModifiers.forEach { (attr, mod) ->
+            if (!isBaikirutoModifier(mod)) {
+                invokeWithReflexSucceeded(itemMeta, addMethod, attr, mod)
+            }
+        }
 
         debugLog("[Baikiruto/Debug] applyAttributes: processing ${entries.count()} entries")
         entries.forEach { rawEntry ->
@@ -427,6 +441,39 @@ abstract class BaseItemMetaVersionAdapter {
             }
         }
         return false
+    }
+
+    /**
+     * 收集材质的默认 attribute modifiers（如护甲、韧性等）。
+     * 用于在非 replaceAll 模式下，将原版默认属性加回 ItemMeta。
+     */
+    private fun collectDefaultAttributeModifiers(material: Material): List<Pair<Any, Any>> {
+        val result = arrayListOf<Pair<Any, Any>>()
+        // Material.getDefaultAttributeModifiers(EquipmentSlot) 在 1.13.2+ 可用
+        val getDefaultModifiers = material.javaClass.methods.firstOrNull { method ->
+            method.name == "getDefaultAttributeModifiers" && method.parameterCount == 1 &&
+                method.parameterTypes[0] == EquipmentSlot::class.java
+        } ?: return emptyList()
+        EquipmentSlot.values().forEach { slot ->
+            val multimap = runCatching { getDefaultModifiers.invoke(material, slot) }.getOrNull() ?: return@forEach
+            val entriesMethod = multimap.javaClass.methods.firstOrNull { method ->
+                method.name == "entries" && method.parameterCount == 0
+            } ?: return@forEach
+            val entries = invokeWithReflex(multimap, entriesMethod) as? Collection<*> ?: return@forEach
+            entries.forEach { entry ->
+                val getKey = entry?.javaClass?.methods?.firstOrNull { it.name == "getKey" && it.parameterCount == 0 }
+                val getValue = entry?.javaClass?.methods?.firstOrNull { it.name == "getValue" && it.parameterCount == 0 }
+                if (getKey != null && getValue != null && entry != null) {
+                    val attr = invokeWithReflex(entry, getKey)
+                    val mod = invokeWithReflex(entry, getValue)
+                    if (attr != null && mod != null) {
+                        result += attr to mod
+                    }
+                }
+            }
+        }
+        debugLog("[Baikiruto/Debug] collectDefaultAttributeModifiers: material=$material, found ${result.size} default modifiers")
+        return result
     }
 
     /**
