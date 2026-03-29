@@ -1,4 +1,4 @@
-﻿package org.tabooproject.baikiruto.impl.script.handler
+package org.tabooproject.baikiruto.impl.script.handler
 
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
@@ -60,7 +60,7 @@ object Fluxon : FluxonHandler {
         }
 
         return try {
-            scriptBase.eval(environment)?.exceptFluxonCompletableFutureError()
+            scriptBase.eval(environment)?.also { it.exceptFluxonCompletableFutureError() }
         } catch (ex: FluxonRuntimeError) {
             BaikirutoLog.scriptRuntimeFailed(id, ex)
             ex.printError()

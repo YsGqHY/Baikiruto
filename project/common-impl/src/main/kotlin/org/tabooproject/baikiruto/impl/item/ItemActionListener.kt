@@ -24,7 +24,6 @@ import org.bukkit.event.player.PlayerItemBreakEvent
 import org.bukkit.event.player.PlayerItemConsumeEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerItemHeldEvent
-import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerRespawnEvent
 import org.bukkit.event.player.PlayerSwapHandItemsEvent
 import org.bukkit.event.player.PlayerItemDamageEvent
@@ -335,7 +334,9 @@ object ItemActionListener {
 
     @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onDamage(event: PlayerItemDamageEvent) {
-        val managed = resolve(event.item) ?: return
+        // 从当前背包重新读取物品，避免 onAttack 已替换主手后 event.item 引用过时
+        val currentItem = findCurrentItem(event.player, event.item) ?: event.item
+        val managed = resolve(currentItem) ?: return
         val durability = ItemDurabilityFeature.applyDamage(managed.stream, event.damage)
         if (durability.applied) {
             event.isCancelled = true
@@ -345,11 +346,11 @@ object ItemActionListener {
             event.isCancelled = true
         }
         if (durability.destroyed) {
-            replacePlayerItem(event.player, event.item, ItemDurabilityFeature.resolveDestroyedItem(managed.stream, event.player))
+            replacePlayerItem(event.player, currentItem, ItemDurabilityFeature.resolveDestroyedItem(managed.stream, event.player))
             return
         }
         if (outcome.changed || durability.applied) {
-            replacePlayerItem(event.player, event.item, managed.stream.toItemStack())
+            replacePlayerItem(event.player, currentItem, managed.stream.toItemStack())
         }
     }
 
@@ -585,16 +586,7 @@ object ItemActionListener {
     // ── 跳跃检测 ──
 
     @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    fun onMove(event: PlayerMoveEvent) {
-
-        val from = event.from
-        val to = event.to ?: return
-        // 仅检测 Y 轴上升且之前在地面上（跳跃）
-        if (to.y <= from.y) return
-        if (!event.player.isOnGround) return
-        // 排除飞行/滑翔
-        if (event.player.isFlying) return
-        if (event.player.isGliding) return
+    fun onJump(event: PlayerJumpEvent) {
         dispatchTracked(event.player, listOf(ItemScriptTrigger.JUMP), event)
     }
 
@@ -684,7 +676,16 @@ object ItemActionListener {
         // 脱下：当前槽位有物品
         resolve(currentItem)?.let { managed ->
             val context = linkedMapOf<String, Any?>("slot" to slot)
-            dispatch(managed, listOf(ItemScriptTrigger.UNEQUIP), player, event, context)
+            val outcome = dispatch(managed, listOf(ItemScriptTrigger.UNEQUIP), player, event, context)
+            if (outcome.changed) {
+                // 在 Bukkit 执行默认 click 处理之前替换 currentItem，
+                // 使物品无论最终去了光标还是被 shift-click 到其他位置，都携带正确的数据
+                val updated = managed.stream.toItemStack()
+                val inventoryEvent = event as? InventoryClickEvent
+                if (inventoryEvent != null) {
+                    inventoryEvent.currentItem = updated
+                }
+            }
         }
         // 穿戴：光标上有物品放入槽位
         if (cursorManaged != null) {
@@ -890,20 +891,35 @@ object ItemActionListener {
     }
 
     private fun replacePlayerItem(player: Player, source: ItemStack, replacement: ItemStack) {
-        if (player.inventory.itemInMainHand == source) {
+        // 优先引用比较，回退到 isSimilar 以应对 onAttack 已替换物品的情况
+        if (player.inventory.itemInMainHand === source || player.inventory.itemInMainHand.isSimilar(source)) {
             player.inventory.setItemInMainHand(replacement)
             return
         }
-        if (player.inventory.itemInOffHand == source) {
+        if (player.inventory.itemInOffHand === source || player.inventory.itemInOffHand.isSimilar(source)) {
             player.inventory.setItemInOffHand(replacement)
             return
         }
         val armor = player.inventory.armorContents
-        val slot = armor.indexOfFirst { it == source }
+        val slot = armor.indexOfFirst { it === source || (it != null && it.isSimilar(source)) }
         if (slot >= 0) {
             armor[slot] = replacement
             player.inventory.armorContents = armor
         }
+    }
+
+    /**
+     * 从玩家当前背包中查找与 [eventItem] 同类型的物品。
+     * 用于 onDamage 等场景，此时 event.item 引用可能已被 onAttack 替换。
+     */
+    private fun findCurrentItem(player: Player, eventItem: ItemStack): ItemStack? {
+        if (player.inventory.itemInMainHand === eventItem || player.inventory.itemInMainHand.isSimilar(eventItem)) {
+            return player.inventory.itemInMainHand
+        }
+        if (player.inventory.itemInOffHand === eventItem || player.inventory.itemInOffHand.isSimilar(eventItem)) {
+            return player.inventory.itemInOffHand
+        }
+        return null
     }
 
     private fun ensureOwnership(managed: ManagedItem, player: Player?): OwnershipValidation {

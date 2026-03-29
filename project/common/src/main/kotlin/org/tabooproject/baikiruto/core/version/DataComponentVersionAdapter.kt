@@ -109,7 +109,21 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         if (incoming.isEmpty()) {
             return
         }
-        wrapper.setComponent("minecraft:custom_data", incoming)
+        // 与已有 custom_data 合并而非替换，避免覆盖 ItemStreamTransport.sync() 写入的 baikiruto 运行时数据
+        val existing = wrapper.getCustomDataMap()
+        if (existing != null && existing.isNotEmpty()) {
+            val merged = linkedMapOf<String, Any?>()
+            existing.forEach { (k, v) -> merged[k.toString()] = v }
+            incoming.forEach { (k, v) ->
+                // 不覆盖 baikiruto 命名空间（由 sync() 管理）
+                if (k != "baikiruto") {
+                    merged[k] = v
+                }
+            }
+            wrapper.setComponent("minecraft:custom_data", merged)
+        } else {
+            wrapper.setComponent("minecraft:custom_data", incoming)
+        }
     }
 
     private fun applyUnbreakableComponent(wrapper: ComponentItemWrapper, value: Any) {
@@ -163,6 +177,9 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
             }
             "minecraft:damage_resistant" -> {
                 listOfNotNull(normalizeDamageResistant(value))
+            }
+            "minecraft:potion_contents" -> {
+                listOfNotNull(normalizePotionContents(value))
             }
             "minecraft:custom_model_data" -> {
                 val candidates = linkedSetOf<Any>()
@@ -302,6 +319,27 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         return linkedMapOf(
             "types" to normalizedTag
         )
+    }
+
+    /**
+     * 归一化 potion_contents 组件：将 custom_color 从 hex 字符串转为整数。
+     * Minecraft 1.21.11 的 PotionContents.CODEC 期望 custom_color 为 Int。
+     */
+    private fun normalizePotionContents(source: Any): Any? {
+        val map = source as? Map<*, *> ?: return source
+        val result = linkedMapOf<String, Any?>()
+        map.forEach { (k, v) ->
+            val key = k?.toString() ?: return@forEach
+            result[key] = if (key == "custom_color") {
+                when (v) {
+                    is Number -> v.toInt()
+                    is String -> v.trim().removePrefix("#").removePrefix("0x").removePrefix("0X")
+                        .toIntOrNull(16) ?: v
+                    else -> v
+                }
+            } else v
+        }
+        return result
     }
 
     private fun extractAdventureBlocks(source: Any?): List<String> {

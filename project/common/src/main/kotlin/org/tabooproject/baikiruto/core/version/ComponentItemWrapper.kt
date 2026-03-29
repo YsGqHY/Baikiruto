@@ -1,4 +1,4 @@
-﻿package org.tabooproject.baikiruto.core.version
+package org.tabooproject.baikiruto.core.version
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -920,4 +920,14 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
     }
 
     fun getItemStack(): ItemStack = itemStack
+
+    /**
+     * 读取当前 minecraft:custom_data 组件内容为 Map。
+     * 用于 applyCustomData 合并场景，避免覆盖已有的 baikiruto 运行时数据。
+     */
+    fun getCustomDataMap(): Map<*, *>? {
+        return runCatching {
+            getJavaComponent<Any>("minecraft:custom_data") as? Map<*, *>
+        }.getOrNull()
+    }
 }
