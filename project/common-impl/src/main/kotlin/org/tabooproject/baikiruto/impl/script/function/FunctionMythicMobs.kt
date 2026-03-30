@@ -41,7 +41,7 @@ import java.util.UUID
 @FluxonRelocate
 object FunctionMythicMobs {
 
-    @Awake(LifeCycle.INIT)
+    @Awake(LifeCycle.ENABLE)
     private fun init() {
         // um 库始终被打包进 JAR，但 MythicMobs 插件不一定安装
         // Mythic.isLoaded() 检测 MythicMobs 插件是否存在
