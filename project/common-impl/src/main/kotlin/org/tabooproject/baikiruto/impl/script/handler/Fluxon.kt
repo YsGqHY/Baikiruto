@@ -15,7 +15,9 @@ import org.tabooproject.fluxon.runtime.RuntimeScriptBase
 import org.tabooproject.fluxon.runtime.error.FluxonRuntimeError
 import org.tabooproject.fluxon.util.exceptFluxonCompletableFutureError
 import org.tabooproject.fluxon.util.printError
+import taboolib.common.LifeCycle
 import taboolib.common.Requires
+import taboolib.common.platform.Awake
 import taboolib.platform.BukkitPlugin
 import java.text.ParseException
 import java.util.concurrent.ConcurrentHashMap
@@ -35,6 +37,12 @@ object Fluxon : FluxonHandler {
 
     init {
         FluxonPlugin.DEFAULT_ALLOW_EXECUTE_TASK_ON_NON_SCRIPT_ENV = true
+        FluxonRuntime.getInstance().sharingIdentity = "Baikiruto"
+    }
+
+    @Awake(LifeCycle.DISABLE)
+    private fun cleanup() {
+        FluxonRuntime.getInstance().unexportAll()
     }
 
     override fun invoke(

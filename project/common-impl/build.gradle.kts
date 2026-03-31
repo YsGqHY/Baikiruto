@@ -9,7 +9,7 @@ dependencies {
     compileOnly("ink.ptms.core:v12110:12110:universal")
     testImplementation("ink.ptms.core:v12110:12110:mapped")
     testImplementation("ink.ptms.core:v12110:12110:universal")
-    compileOnly("org.tabooproject.fluxon:core:1.6.15")
+    compileOnly("org.tabooproject.fluxon:core:1.6.24")
     compileOnly("org.tabooproject.fluxon.plugin:core:1.1.4")
     compileOnly("org.tabooproject.fluxon.plugin:common:1.1.4")
     compileOnly("org.tabooproject.fluxon.plugin:platform-bukkit:1.1.4")

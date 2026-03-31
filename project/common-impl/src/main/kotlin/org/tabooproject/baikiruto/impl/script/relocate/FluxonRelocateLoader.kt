@@ -48,4 +48,23 @@ object FluxonRelocateLoader {
             }
         }
     }
+
+    /**
+     * 在 ACTIVE 阶段从共享注册表导入 Baikiruto 导出的函数到 FluxonPlugin 的 Runtime。
+     * 此时 FunctionMythicMobs 等已在 ENABLE 阶段完成导出，可以安全导入。
+     */
+    @Awake(LifeCycle.ACTIVE)
+    fun importSharedFunctions() {
+        if (!needToTranslate) return
+        try {
+            // 必须通过 FluxonPlugin 的 ClassLoader 加载，避免命中 Baikiruto relocate 后的类
+            val fluxonPlugin = Bukkit.getServer().pluginManager.getPlugin("FluxonPlugin") ?: return
+            val cl = fluxonPlugin.javaClass.classLoader
+            val fluxonRuntimeClass = Class.forName("org.tabooproject.fluxon.runtime.FluxonRuntime", true, cl)
+            val runtime = fluxonRuntimeClass.getMethod("getInstance").invoke(null)
+            fluxonRuntimeClass.getMethod("importAllSharedFunctions", String::class.java).invoke(runtime, "Baikiruto")
+        } catch (_: Throwable) {
+            // FluxonPlugin 的 Runtime 不可用时静默忽略
+        }
+    }
 }

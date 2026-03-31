@@ -49,25 +49,30 @@ object FunctionMythicMobs {
             return
         }
         with(FluxonRuntime.getInstance()) {
+            // 注册 MythicApi 的 @Export(shared = true) 方法，自动导出到共享注册表
             exportRegistry.registerClass(MythicApi::class.java)
-            registerFunction("mythic", FunctionSignature.returnsObject().noParams()) { it.setReturnRef(MythicApi) }
-            registerFunction("mythicmobs", FunctionSignature.returnsObject().noParams()) { it.setReturnRef(MythicApi) }
 
-            // Mob 扩展函数
+            // 注册并导出顶层函数
+            registerFunction("mythic", FunctionSignature.returnsObject().noParams()) { it.setReturnRef(MythicApi) }
+            exportRegisteredFunction("mythic")
+            registerFunction("mythicmobs", FunctionSignature.returnsObject().noParams()) { it.setReturnRef(MythicApi) }
+            exportRegisteredFunction("mythicmobs")
+
+            // Mob 扩展函数（使用 sharedFunction 一步注册+导出）
             registerExtension(Mob::class.java)
-                .function("getId", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.id) }
-                .function("getDisplayName", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.displayName) }
-                .function("getLevel", FunctionSignature.returns(Type.D).noParams()) { it.setReturnDouble(it.target!!.level) }
-                .function("getEntity", FunctionSignature.returnsObject().noParams()) { it.setReturnRef(it.target!!.entity) }
-                .function("getFaction", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.faction) }
-                .function("getStance", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.stance) }
+                .sharedFunction("getId", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.id) }
+                .sharedFunction("getDisplayName", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.displayName) }
+                .sharedFunction("getLevel", FunctionSignature.returns(Type.D).noParams()) { it.setReturnDouble(it.target!!.level) }
+                .sharedFunction("getEntity", FunctionSignature.returnsObject().noParams()) { it.setReturnRef(it.target!!.entity) }
+                .sharedFunction("getFaction", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.faction) }
+                .sharedFunction("getStance", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.stance) }
 
             // MobType 扩展函数
             registerExtension(MobType::class.java)
-                .function("getId", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.id) }
-                .function("getDisplayName", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.displayName) }
-                .function("getEntityType", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.entityType) }
-                .function("spawn", FunctionSignature.returnsObject().params(Type.OBJECT, Type.D)) { ctx ->
+                .sharedFunction("getId", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.id) }
+                .sharedFunction("getDisplayName", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.displayName) }
+                .sharedFunction("getEntityType", FunctionSignature.returns(Type.STRING).noParams()) { it.setReturnRef(it.target!!.entityType) }
+                .sharedFunction("spawn", FunctionSignature.returnsObject().params(Type.OBJECT, Type.D)) { ctx ->
                     val location = ctx.getRef(0) as Location
                     val level = ctx.getDouble(1)
                     ctx.setReturnRef(ctx.target!!.spawn(location, level))
@@ -79,88 +84,88 @@ object FunctionMythicMobs {
 
         // ── 状态 ──
 
-        @Export
+        @Export(shared = true)
         fun isLoaded(): Boolean {
             return Mythic.isLoaded()
         }
 
         // ── 怪物 ──
 
-        @Export
+        @Export(shared = true)
         fun getMob(entity: Entity): Mob? {
             return runCatching { Mythic.API.getMob(entity) }.getOrNull()
         }
 
-        @Export
+        @Export(shared = true)
         fun getMobByUUID(uuid: String): Mob? {
             val parsed = runCatching { UUID.fromString(uuid) }.getOrNull() ?: return null
             return runCatching { Mythic.API.getMob(parsed) }.getOrNull()
         }
 
-        @Export
+        @Export(shared = true)
         fun getMobType(id: String): MobType? {
             return runCatching { Mythic.API.getMobType(id) }.getOrNull()
         }
 
-        @Export
+        @Export(shared = true)
         fun getMobIds(): List<String> {
             return runCatching { Mythic.API.getMobIDList() }.getOrDefault(emptyList())
         }
 
-        @Export
+        @Export(shared = true)
         fun spawnMob(id: String, location: Location, level: Double): Mob? {
             val mobType = runCatching { Mythic.API.getMobType(id) }.getOrNull() ?: return null
             return runCatching { mobType.spawn(location, level) }.getOrNull()
         }
 
-        @Export
+        @Export(shared = true)
         fun isMythicMob(entity: Entity): Boolean {
             return runCatching { Mythic.API.getMob(entity) }.getOrNull() != null
         }
 
         // ── 物品 ──
 
-        @Export
+        @Export(shared = true)
         fun getItem(id: String): ItemStack? {
             return runCatching { Mythic.API.getItemStack(id) }.getOrNull()
         }
 
-        @Export
+        @Export(shared = true)
         fun getItemWithPlayer(id: String, player: Player): ItemStack? {
             return runCatching { Mythic.API.getItemStack(id, player) }.getOrNull()
         }
 
-        @Export
+        @Export(shared = true)
         fun getItemId(itemStack: ItemStack): String? {
             return runCatching { Mythic.API.getItemId(itemStack) }.getOrNull()
         }
 
-        @Export
+        @Export(shared = true)
         fun getItemIds(): List<String> {
             return runCatching { Mythic.API.getItemIDList() }.getOrDefault(emptyList())
         }
 
         // ── 技能 ──
 
-        @Export
+        @Export(shared = true)
         fun castSkill(caster: Entity, skillName: String, power: Float) {
             runCatching { Mythic.API.castSkill(caster, skillName, power = power) }
         }
 
-        @Export
+        @Export(shared = true)
         fun castSkillAt(caster: Entity, skillName: String, target: LivingEntity, power: Float) {
             runCatching { Mythic.API.castSkill(caster, skillName, target, power = power) }
         }
 
         // ── 仇恨 ──
 
-        @Export
+        @Export(shared = true)
         fun addThreat(entity: Entity, target: LivingEntity, amount: Double) {
             val mob = runCatching { Mythic.API.getMob(entity) }.getOrNull() ?: return
             runCatching { mob.addThreat(entity, target, amount) }
         }
 
-        @Export
+        @Export(shared = true)
         fun reduceThreat(entity: Entity, target: LivingEntity, amount: Double) {
             val mob = runCatching { Mythic.API.getMob(entity) }.getOrNull() ?: return
             runCatching { mob.reduceThreat(entity, target, amount) }
