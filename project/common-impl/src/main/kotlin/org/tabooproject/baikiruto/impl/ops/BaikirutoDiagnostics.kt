@@ -6,6 +6,7 @@ import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import org.tabooproject.baikiruto.impl.hook.HeadDatabaseHook
 import org.tabooproject.baikiruto.impl.item.ItemDefinitionLoader
 import org.tabooproject.baikiruto.impl.metrics.BaikirutoMetrics
+import org.tabooproject.baikiruto.impl.script.FluxonChecker
 import org.tabooproject.baikiruto.impl.version.VersionAdapterService
 import taboolib.library.reflex.LazyClass
 
@@ -40,7 +41,10 @@ object BaikirutoDiagnostics {
             "scriptCacheSize=${cacheStats?.cacheSize ?: 0}",
             "scriptCacheHitRate=${cacheHitRate}%",
             "avgItemBuildMicros=${BaikirutoMetrics.itemBuildAverageMicros()}",
-            "fluxonAvailable=${isFluxonAvailable()}",
+            "fluxonAvailable=${FluxonChecker.isReady()}",
+            "fluxonSource=${FluxonChecker.sourceId()}",
+            "fluxonBundledAvailable=${FluxonChecker.isBundledAvailable()}",
+            "fluxonBootstrapFailure=${FluxonChecker.startupFailureMessage() ?: "none"}",
             "hookMythicConfigured=${BaikirutoSettings.mythicHookEnabled}",
             "hookMythicAvailable=${isClassAvailable("ink.ptms.um.event.MobSpawnEvent")}",
             "hookAttributePlusConfigured=${BaikirutoSettings.attributePlusHookEnabled}",
@@ -51,10 +55,6 @@ object BaikirutoDiagnostics {
             "playerDataStorage=${if (BaikirutoSettings.databaseEnabled) "MYSQL" else "SQLITE"}",
             "playerDataInitialized=${BaikirutoPlayerDataService.isInitialized()}"
         )
-    }
-
-    private fun isFluxonAvailable(): Boolean {
-        return isClassAvailable("org.tabooproject.fluxon.Fluxon")
     }
 
     private fun isClassAvailable(name: String): Boolean {

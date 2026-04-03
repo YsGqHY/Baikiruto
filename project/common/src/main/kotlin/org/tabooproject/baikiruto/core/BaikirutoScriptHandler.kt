@@ -1,6 +1,7 @@
 package org.tabooproject.baikiruto.core
 
 import org.bukkit.command.CommandSender
+import org.tabooproject.baikiruto.core.item.Registry
 
 /**
  * 脚本处理器接口
@@ -14,6 +15,15 @@ import org.bukkit.command.CommandSender
  */
 interface BaikirutoScriptHandler {
 
+    fun invoke(
+        source: BaikirutoScriptSource,
+        id: String,
+        sender: CommandSender?,
+        variables: Map<String, Any?> = emptyMap()
+    ): Any?
+
+    fun preheat(source: BaikirutoScriptSource, id: String)
+
     /**
      * 执行脚本（字符串版本）
      *
@@ -25,7 +35,10 @@ interface BaikirutoScriptHandler {
      * @param variables 传递给脚本的变量映射
      * @return 脚本执行结果
      */
-    fun invoke(source: String, id: String, sender: CommandSender?, variables: Map<String, Any?> = emptyMap()): Any?
+    fun invoke(source: String, id: String, sender: CommandSender?, variables: Map<String, Any?> = emptyMap()): Any? {
+        val typedSource = BaikirutoScriptSource.of(source) ?: return null
+        return invoke(typedSource, id, sender, variables)
+    }
 
     /**
      * 预热脚本（字符串版本）
@@ -35,7 +48,18 @@ interface BaikirutoScriptHandler {
      * @param source 脚本源代码
      * @param id 脚本名称
      */
-    fun preheat(source: String, id: String)
+    fun preheat(source: String, id: String) {
+        val typedSource = BaikirutoScriptSource.of(source) ?: return
+        preheat(typedSource, id)
+    }
+
+    fun registerScriptType(scriptType: BaikirutoScriptType): BaikirutoScriptType
+
+    fun unregisterScriptType(scriptTypeId: String): BaikirutoScriptType?
+
+    fun getScriptType(scriptTypeId: String): BaikirutoScriptType?
+
+    fun getScriptTypeRegistry(): Registry<BaikirutoScriptType>
 
     fun invalidate(id: String) {
     }

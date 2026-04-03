@@ -51,10 +51,12 @@ items:
       durability: 240
       charge: 3
     data-mapper:
-      durability_line: |
-        def current = &data["durability_current"] ?: &data["durability"] ?: 0
-        def max = &data["durability"] ?: 0
-        return current.toString() + "/" + max.toString()
+      durability_line:
+        type: fluxon
+        script: |
+          def current = &data["durability_current"] ?: &data["durability"] ?: 0
+          def max = &data["durability"] ?: 0
+          return current.toString() + "/" + max.toString()
     effects:
       glow: true
       item-flags:
@@ -74,11 +76,13 @@ items:
           item_description:
             - "&7zh_cn localization active"
     scripts:
-      build: |
-        if (&ctx["debug"] == true) {
-            &sender?.sendMessage("[Baikiruto] build -> " + itemId)
-        }
-        return item
+      build:
+        type: fluxon
+        script: |
+          if (&ctx["debug"] == true) {
+              &sender?.sendMessage("[Baikiruto] build -> " + itemId)
+          }
+          return item
       release: |
         &ops.setData("last_release", "release")
         return item
@@ -89,9 +93,11 @@ items:
         &ops.setData("last_trigger", "drop")
         return item
     event:
-      on_use: |
-        &ops.setData("last_trigger", "use")
-        return item
+      on_use:
+        type: fluxon
+        script: |
+          &ops.setData("last_trigger", "use")
+          return item
       on_interact: |
         &ops.setData("last_trigger", "interact")
         return item
@@ -184,11 +190,13 @@ items:
     metas:
       trace:
         scripts:
-          build: |
-            if (&ctx["debug"] == true) {
-                &sender?.sendMessage("[Baikiruto] meta build -> " + itemId)
-            }
-            return item
+          build:
+            type: fluxon
+            script: |
+              if (&ctx["debug"] == true) {
+                  &sender?.sendMessage("[Baikiruto] meta build -> " + itemId)
+              }
+              return item
           drop: |
             return item
     meta:

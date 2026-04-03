@@ -1,5 +1,7 @@
 package org.tabooproject.baikiruto.core.item
 
+import org.tabooproject.baikiruto.core.BaikirutoScriptSource
+
 interface Item {
 
     val id: String
@@ -27,12 +29,16 @@ interface Item {
         metas.reversed().forEach { it.drop(stream) }
     }
 
-    fun collectScripts(): Map<String, String> {
-        val values = linkedMapOf<String, String>()
-        values += scripts.toScriptMap(id)
+    fun collectScriptSources(): Map<String, BaikirutoScriptSource> {
+        val values = linkedMapOf<String, BaikirutoScriptSource>()
+        values += scripts.toTypedScriptMap(id)
         metas.forEach { meta ->
-            values += meta.scripts.toScriptMap("$id:meta:${meta.id}")
+            values += meta.scripts.toTypedScriptMap("$id:meta:${meta.id}")
         }
         return values
+    }
+
+    fun collectScripts(): Map<String, String> {
+        return collectScriptSources().mapValues { (_, source) -> source.content }
     }
 }

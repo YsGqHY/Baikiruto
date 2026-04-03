@@ -3,6 +3,7 @@ package org.tabooproject.baikiruto.impl.script.item
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 import org.tabooproject.baikiruto.core.Baikiruto
+import org.tabooproject.baikiruto.core.BaikirutoScriptSource
 import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemScriptTrigger
 import org.tabooproject.baikiruto.core.item.ItemStream
@@ -14,11 +15,11 @@ object ItemScriptExecutor {
     fun execute(
         itemId: String,
         trigger: ItemScriptTrigger,
-        source: String?,
+        source: BaikirutoScriptSource?,
         stream: ItemStream,
         context: Map<String, Any?> = emptyMap()
     ): Any? {
-        if (source.isNullOrBlank()) {
+        if (source == null) {
             return null
         }
         val sender = context["sender"] as? CommandSender
@@ -57,7 +58,7 @@ object ItemScriptExecutor {
 
     fun preheat(item: Item, batchSize: Int) {
         val effectiveBatchSize = batchSize.coerceAtLeast(1)
-        val scripts = item.collectScripts().entries.toList()
+        val scripts = item.collectScriptSources().entries.toList()
         scripts.chunked(effectiveBatchSize).forEach { batch ->
             batch.forEach { (scriptId, source) ->
                 try {

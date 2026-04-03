@@ -118,7 +118,10 @@ log-minimessage-unavailable: '&e已启用 MiniMessage 配置解析，但当前�
 
 log-version-features: '&7版本特性: profile={0}, running={1}, versionId={2}, legacyNbt={3}, dataComponent={4}, customModelData={5}, itemModel={6}'
 
-log-script-handler-registered: '&7脚本处理器已在 LOAD 注册 (engine=Fluxon)。'
+log-script-handler-registered: '&7脚本处理器已在 LOAD 注册 (builtins={0})。'
+log-script-type-registered: '&7脚本类型已注册: {0}'
+log-script-type-unregistered: '&7脚本类型已注销: {0}'
+log-script-type-missing: '&e脚本 {1} 声明了未知脚本类型 {0}，已跳过。'
 
 log-bstats-enabled: '&7bStats 指标已启用 (pluginId={0})。'
 log-bstats-failed: '&cbStats 指标初始化失败: {0}'

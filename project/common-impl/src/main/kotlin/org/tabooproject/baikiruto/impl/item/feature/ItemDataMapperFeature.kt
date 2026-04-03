@@ -2,6 +2,7 @@ package org.tabooproject.baikiruto.impl.item.feature
 
 import org.bukkit.command.CommandSender
 import org.tabooproject.baikiruto.core.Baikiruto
+import org.tabooproject.baikiruto.core.BaikirutoScriptSource
 import org.tabooproject.baikiruto.core.item.ItemSignal
 import org.tabooproject.baikiruto.impl.item.DefaultItemStream
 import org.tabooproject.baikiruto.impl.log.BaikirutoLog
@@ -18,10 +19,7 @@ object ItemDataMapperFeature {
         val sender = context["sender"] as? CommandSender
         rawMapper.forEach { (rawKey, rawSource) ->
             val key = rawKey?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
-            val source = parseSource(rawSource)
-            if (source.isBlank()) {
-                return@forEach
-            }
+            val source = BaikirutoScriptSource.fromRuntimeValue(rawSource) ?: return@forEach
             val variables = LinkedHashMap<String, Any?>()
             variables.putAll(context)
             variables["stream"] = stream
@@ -40,14 +38,6 @@ object ItemDataMapperFeature {
             }.getOrNull() ?: return@forEach
             stream.setRuntimeData(key, mapped)
             stream.markSignal(ItemSignal.DATA_MAPPED)
-        }
-    }
-
-    private fun parseSource(rawSource: Any?): String {
-        return when (rawSource) {
-            is String -> rawSource
-            is Iterable<*> -> rawSource.mapNotNull { it?.toString() }.joinToString("\n")
-            else -> rawSource?.toString().orEmpty()
         }
     }
 }

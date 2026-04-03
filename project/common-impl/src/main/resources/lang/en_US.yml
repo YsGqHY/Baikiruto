@@ -118,7 +118,10 @@ log-minimessage-unavailable: '&eMiniMessage config parsing is enabled, but the c
 
 log-version-features: '&7Version features: profile={0}, running={1}, versionId={2}, legacyNbt={3}, dataComponent={4}, customModelData={5}, itemModel={6}'
 
-log-script-handler-registered: '&7Script handler registered in LOAD (engine=Fluxon).'
+log-script-handler-registered: '&7Script handler registered in LOAD (builtins={0}).'
+log-script-type-registered: '&7Script type registered: {0}'
+log-script-type-unregistered: '&7Script type unregistered: {0}'
+log-script-type-missing: '&eScript {1} declared unknown script type {0}, skipped.'
 
 log-bstats-enabled: '&7bStats metrics enabled (pluginId={0}).'
 log-bstats-failed: '&cFailed to initialize bStats metrics: {0}'

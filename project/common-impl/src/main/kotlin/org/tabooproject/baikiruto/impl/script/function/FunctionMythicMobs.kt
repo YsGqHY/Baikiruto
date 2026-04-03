@@ -8,6 +8,8 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
+import org.tabooproject.baikiruto.impl.BaikirutoSettings
+import org.tabooproject.baikiruto.impl.script.FluxonChecker
 import org.tabooproject.baikiruto.impl.script.relocate.FluxonRelocate
 import org.tabooproject.fluxon.runtime.FluxonRuntime
 import org.tabooproject.fluxon.runtime.FunctionSignature
@@ -43,9 +45,12 @@ object FunctionMythicMobs {
 
     @Awake(LifeCycle.ENABLE)
     private fun init() {
+        if (!BaikirutoSettings.mythicHookEnabled) {
+            return
+        }
         // um 库始终被打包进 JAR，但 MythicMobs 插件不一定安装
         // Mythic.isLoaded() 检测 MythicMobs 插件是否存在
-        if (!Mythic.isLoaded()) {
+        if (!Mythic.isLoaded() || !FluxonChecker.isReady()) {
             return
         }
         with(FluxonRuntime.getInstance()) {

@@ -2,6 +2,7 @@ package org.tabooproject.baikiruto.impl.log
 
 import taboolib.common.platform.function.severe
 import taboolib.common.platform.function.warning
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 错误日志工具。
@@ -9,6 +10,8 @@ import taboolib.common.platform.function.warning
  * 有意不使用 lang 系统——错误诊断信息需要固定格式，且日志级别语义优先于国际化。
  */
 object BaikirutoLog {
+
+    private val fluxonBootstrapLogged = AtomicBoolean(false)
 
     fun serviceMissing(service: String, throwable: Throwable) {
         severe("[Baikiruto][SERVICE_MISSING] $service -> ${throwable.message}")
@@ -20,5 +23,11 @@ object BaikirutoLog {
 
     fun scriptRuntimeFailed(scriptId: String, throwable: Throwable) {
         warning("[Baikiruto][SCRIPT_RUNTIME_FAILED] $scriptId -> ${throwable.message}")
+    }
+
+    fun fluxonBootstrapFailed(message: String) {
+        if (fluxonBootstrapLogged.compareAndSet(false, true)) {
+            System.err.println("[Baikiruto][FLUXON_BOOTSTRAP_FAILED] $message")
+        }
     }
 }

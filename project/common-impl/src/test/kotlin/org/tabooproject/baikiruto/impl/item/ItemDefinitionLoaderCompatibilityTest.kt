@@ -1,6 +1,7 @@
 package org.tabooproject.baikiruto.impl.item
 
 import taboolib.library.configuration.ConfigurationSection
+import org.tabooproject.baikiruto.core.BaikirutoScriptSource
 import org.tabooproject.baikiruto.core.item.ItemModel
 import java.lang.reflect.Proxy
 import kotlin.test.Test
@@ -167,6 +168,37 @@ class ItemDefinitionLoaderCompatibilityTest {
         )
         assertEquals("line-1\nline-2", fromList)
         assertEquals("a()\nb()", fromMap)
+    }
+
+    @Test
+    fun `should parse typed script source from config map`() {
+        val source = invokeScriptSourceMethod(
+            mapOf(
+                "type" to "mock-engine",
+                "script" to listOf("line-1", "line-2")
+            )
+        )
+
+        assertEquals("mock_engine", source?.normalizedType())
+        assertEquals("line-1\nline-2", source?.content)
+    }
+
+    @Test
+    fun `should store data mapper as serializable typed map`() {
+        val parsed = invokeMapMethod(
+            "parseDataMapper",
+            mapOf(
+                "durability_line" to mapOf(
+                    "type" to "fluxon",
+                    "script" to listOf("a()", "b()")
+                )
+            )
+        )
+
+        val mappings = parsed[org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature.DATA_MAPPER_KEY] as Map<*, *>
+        val durabilityLine = mappings["durability_line"] as Map<*, *>
+        assertEquals("fluxon", durabilityLine["type"])
+        assertEquals("a()\nb()", durabilityLine["source"])
     }
 
     @Test
@@ -360,6 +392,16 @@ class ItemDefinitionLoaderCompatibilityTest {
         val method = ItemDefinitionLoader::class.java.getDeclaredMethod(name, Any::class.java)
         method.isAccessible = true
         return method.invoke(ItemDefinitionLoader, source) as String?
+    }
+
+    private fun invokeScriptSourceMethod(source: Any?): BaikirutoScriptSource? {
+        val method = ItemDefinitionLoader::class.java.getDeclaredMethod(
+            "parseScriptSource",
+            Any::class.java,
+            String::class.java
+        )
+        method.isAccessible = true
+        return method.invoke(ItemDefinitionLoader, source, "test") as BaikirutoScriptSource?
     }
 
     @Suppress("UNCHECKED_CAST")

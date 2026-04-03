@@ -1,29 +1,31 @@
 package org.tabooproject.baikiruto.core.item
 
+import org.tabooproject.baikiruto.core.BaikirutoScriptSource
+
 data class ItemScriptHooks(
     val build: String? = null,
     val drop: String? = null,
     val use: String? = null,
     val interact: String? = null,
-    private val triggerEntries: Map<ItemScriptTrigger, String> = emptyMap(),
-    private val i18nTriggerEntries: Map<String, Map<ItemScriptTrigger, String>> = emptyMap(),
+    private val triggerEntries: Map<ItemScriptTrigger, BaikirutoScriptSource> = emptyMap(),
+    private val i18nTriggerEntries: Map<String, Map<ItemScriptTrigger, BaikirutoScriptSource>> = emptyMap(),
     private val cancelTriggerEntries: Set<ItemScriptTrigger> = emptySet(),
     private val i18nCancelTriggerEntries: Map<String, Set<ItemScriptTrigger>> = emptyMap()
 ) {
 
-    private val sources: Map<ItemScriptTrigger, String> = linkedMapOf<ItemScriptTrigger, String>().apply {
-        putAll(triggerEntries.filterValues { it.isNotBlank() })
+    private val sources: Map<ItemScriptTrigger, BaikirutoScriptSource> = linkedMapOf<ItemScriptTrigger, BaikirutoScriptSource>().apply {
+        putAll(triggerEntries.filterValues { it.content.isNotBlank() })
         append(ItemScriptTrigger.BUILD, build)
         append(ItemScriptTrigger.DROP, drop)
         append(ItemScriptTrigger.USE, use)
         append(ItemScriptTrigger.INTERACT, interact)
     }
 
-    private val localizedSources: Map<String, Map<ItemScriptTrigger, String>> =
-        linkedMapOf<String, Map<ItemScriptTrigger, String>>().apply {
+    private val localizedSources: Map<String, Map<ItemScriptTrigger, BaikirutoScriptSource>> =
+        linkedMapOf<String, Map<ItemScriptTrigger, BaikirutoScriptSource>>().apply {
             i18nTriggerEntries.forEach { (locale, mapping) ->
                 val normalizedLocale = normalizeLocale(locale) ?: return@forEach
-                val normalizedMapping = mapping.filterValues { it.isNotBlank() }
+                val normalizedMapping = mapping.filterValues { it.content.isNotBlank() }
                 if (normalizedMapping.isNotEmpty()) {
                     put(normalizedLocale, normalizedMapping)
                 }
@@ -43,12 +45,20 @@ data class ItemScriptHooks(
             }
         }
 
+    fun entry(trigger: ItemScriptTrigger, locale: String? = null): BaikirutoScriptSource? {
+        return resolveLocalizedEntry(trigger, locale) ?: sources[trigger]
+    }
+
     fun source(trigger: ItemScriptTrigger, locale: String? = null): String? {
-        return resolveLocalizedSource(trigger, locale) ?: sources[trigger]
+        return entry(trigger, locale)?.content
+    }
+
+    fun type(trigger: ItemScriptTrigger, locale: String? = null): String? {
+        return entry(trigger, locale)?.normalizedType()
     }
 
     fun has(trigger: ItemScriptTrigger, locale: String? = null): Boolean {
-        return !source(trigger, locale).isNullOrBlank()
+        return entry(trigger, locale) != null
     }
 
     fun shouldCancel(trigger: ItemScriptTrigger, locale: String? = null): Boolean {
@@ -59,20 +69,24 @@ data class ItemScriptHooks(
     }
 
     fun toScriptMap(prefix: String): Map<String, String> {
-        val values = linkedMapOf<String, String>()
-        sources.forEach { (trigger, source) ->
-            if (source.isNotBlank()) {
-                values["$prefix:${trigger.key}"] = source
+        return toTypedScriptMap(prefix).mapValues { (_, source) -> source.content }
+    }
+
+    fun toTypedScriptMap(prefix: String): Map<String, BaikirutoScriptSource> {
+        return linkedMapOf<String, BaikirutoScriptSource>().apply {
+            sources.forEach { (trigger, source) ->
+                if (source.content.isNotBlank()) {
+                    put("$prefix:${trigger.key}", source)
+                }
             }
-        }
-        localizedSources.forEach { (locale, scripts) ->
-            scripts.forEach { (trigger, source) ->
-                if (source.isNotBlank()) {
-                    values["$prefix:i18n:$locale:${trigger.key}"] = source
+            localizedSources.forEach { (locale, scripts) ->
+                scripts.forEach { (trigger, source) ->
+                    if (source.content.isNotBlank()) {
+                        put("$prefix:i18n:$locale:${trigger.key}", source)
+                    }
                 }
             }
         }
-        return values
     }
 
     companion object {
@@ -81,30 +95,42 @@ data class ItemScriptHooks(
             raw: Map<String, String?>,
             i18nRaw: Map<String, Map<String, String?>> = emptyMap()
         ): ItemScriptHooks {
-            val mapping = linkedMapOf<ItemScriptTrigger, String>()
+            return fromSources(
+                raw = raw.mapValues { (_, source) -> BaikirutoScriptSource.of(source) },
+                i18nRaw = i18nRaw.mapValues { (_, scripts) ->
+                    scripts.mapValues { (_, source) -> BaikirutoScriptSource.of(source) }
+                }
+            )
+        }
+
+        fun fromSources(
+            raw: Map<String, BaikirutoScriptSource?>,
+            i18nRaw: Map<String, Map<String, BaikirutoScriptSource?>> = emptyMap()
+        ): ItemScriptHooks {
+            val mapping = linkedMapOf<ItemScriptTrigger, BaikirutoScriptSource>()
             val cancelMapping = linkedSetOf<ItemScriptTrigger>()
             for ((key, source) in raw) {
                 val parsed = parseTriggerEntry(key) ?: continue
                 if (parsed.cancelEvent) {
                     cancelMapping += parsed.trigger
                 }
-                if (source.isNullOrBlank()) {
+                if (source == null || source.content.isBlank()) {
                     continue
                 }
                 mapping[parsed.trigger] = source
             }
-            val i18nMapping = linkedMapOf<String, Map<ItemScriptTrigger, String>>()
+            val i18nMapping = linkedMapOf<String, Map<ItemScriptTrigger, BaikirutoScriptSource>>()
             val i18nCancelMapping = linkedMapOf<String, Set<ItemScriptTrigger>>()
             for ((locale, scripts) in i18nRaw) {
                 val normalizedLocale = normalizeLocale(locale) ?: continue
-                val localized = linkedMapOf<ItemScriptTrigger, String>()
+                val localized = linkedMapOf<ItemScriptTrigger, BaikirutoScriptSource>()
                 val localizedCancel = linkedSetOf<ItemScriptTrigger>()
                 for ((key, source) in scripts) {
                     val parsed = parseTriggerEntry(key) ?: continue
                     if (parsed.cancelEvent) {
                         localizedCancel += parsed.trigger
                     }
-                    if (source.isNullOrBlank()) {
+                    if (source == null || source.content.isBlank()) {
                         continue
                     }
                     localized[parsed.trigger] = source
@@ -153,7 +179,7 @@ data class ItemScriptHooks(
         )
     }
 
-    private fun resolveLocalizedSource(trigger: ItemScriptTrigger, locale: String?): String? {
+    private fun resolveLocalizedEntry(trigger: ItemScriptTrigger, locale: String?): BaikirutoScriptSource? {
         val normalized = normalizeLocale(locale) ?: return null
         val languageOnly = normalized.substringBefore('_')
         return localizedSources[normalized]?.get(trigger)
@@ -167,10 +193,8 @@ data class ItemScriptHooks(
             ?: localizedCancelSources[languageOnly]
     }
 
-    private fun MutableMap<ItemScriptTrigger, String>.append(trigger: ItemScriptTrigger, source: String?) {
-        if (!source.isNullOrBlank()) {
-            put(trigger, source)
-        }
+    private fun MutableMap<ItemScriptTrigger, BaikirutoScriptSource>.append(trigger: ItemScriptTrigger, source: String?) {
+        BaikirutoScriptSource.of(source)?.let { put(trigger, it) }
     }
 
     private fun normalizeLocale(value: String?): String? {

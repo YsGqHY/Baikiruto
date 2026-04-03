@@ -12,6 +12,7 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.Inventory
 import org.bukkit.util.io.BukkitObjectOutputStream
 import org.tabooproject.baikiruto.core.Baikiruto
+import org.tabooproject.baikiruto.core.BaikirutoScriptType
 import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemDisplay
 import org.tabooproject.baikiruto.core.item.ItemGroup
@@ -92,6 +93,18 @@ object BaikirutoLegacyAPI {
         Baikiruto.api().reload()
     }
 
+    fun registerScriptType(scriptType: BaikirutoScriptType): BaikirutoScriptType {
+        return Baikiruto.api().registerScriptType(scriptType)
+    }
+
+    fun unregisterScriptType(scriptTypeId: String): BaikirutoScriptType? {
+        return Baikiruto.api().unregisterScriptType(scriptTypeId)
+    }
+
+    fun getScriptType(scriptTypeId: String): BaikirutoScriptType? {
+        return Baikiruto.api().getScriptType(scriptTypeId)
+    }
+
     fun reloadItem() {
         reload()
     }
@@ -124,6 +137,9 @@ object BaikirutoLegacyAPI {
 
     val registeredMeta: Map<String, MetaFactory>
         get() = Baikiruto.api().getMetaFactoryRegistry().entries()
+
+    val registeredScriptType: Map<String, BaikirutoScriptType>
+        get() = Baikiruto.api().getScriptTypeRegistry().entries()
 
     fun loadItemFromFile(file: File) {
         Baikiruto.api().getItemLoader().loadItemFromFile(file).forEach { item ->

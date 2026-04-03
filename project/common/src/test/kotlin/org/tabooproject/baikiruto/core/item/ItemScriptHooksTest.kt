@@ -1,7 +1,9 @@
 package org.tabooproject.baikiruto.core.item
 
+import org.tabooproject.baikiruto.core.BaikirutoScriptSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class ItemScriptHooksTest {
@@ -13,6 +15,39 @@ class ItemScriptHooksTest {
         assertEquals(2, scripts.size)
         assertTrue(scripts.containsKey("demo:item:build"))
         assertTrue(scripts.containsKey("demo:item:drop"))
+    }
+
+    @Test
+    fun `should expose typed entries with default fluxon fallback`() {
+        val hooks = ItemScriptHooks.fromSources(
+            raw = mapOf(
+                "on_use" to BaikirutoScriptSource(type = "custom_engine", content = "use()")
+            )
+        )
+
+        assertEquals("use()", hooks.source(ItemScriptTrigger.USE))
+        assertEquals("custom_engine", hooks.type(ItemScriptTrigger.USE))
+        assertEquals(BaikirutoScriptSource.DEFAULT_TYPE, ItemScriptHooks(build = "build()")
+            .type(ItemScriptTrigger.BUILD))
+        assertNotNull(hooks.entry(ItemScriptTrigger.USE))
+    }
+
+    @Test
+    fun `should export typed script entries`() {
+        val hooks = ItemScriptHooks.fromSources(
+            raw = mapOf(
+                "on_use" to BaikirutoScriptSource(type = "mock", content = "use()")
+            ),
+            i18nRaw = mapOf(
+                "zh_cn" to mapOf(
+                    "on_use" to BaikirutoScriptSource(type = "mock_i18n", content = "zhUse()")
+                )
+            )
+        )
+
+        val scripts = hooks.toTypedScriptMap("demo:item")
+        assertEquals("mock", scripts["demo:item:use"]?.normalizedType())
+        assertEquals("mock_i18n", scripts["demo:item:i18n:zh_cn:use"]?.normalizedType())
     }
 
     @Test
@@ -46,8 +81,11 @@ class ItemScriptHooksTest {
             }
         }
         val scripts = item.collectScripts()
+        val typedScripts = item.collectScriptSources()
         assertTrue(scripts.containsKey("demo:build"))
         assertTrue(scripts.containsKey("demo:meta:trace:build"))
+        assertEquals("itemBuild()", typedScripts["demo:build"]?.content)
+        assertEquals("metaBuild()", typedScripts["demo:meta:trace:build"]?.content)
     }
 
     @Test
@@ -62,6 +100,7 @@ class ItemScriptHooksTest {
         assertEquals("zhUse()", hooks.source(ItemScriptTrigger.USE, "zh-CN"))
         assertEquals("defaultUse()", hooks.source(ItemScriptTrigger.USE, "en-US"))
         assertEquals("enBuild()", hooks.source(ItemScriptTrigger.BUILD, "en_US"))
+        assertEquals(BaikirutoScriptSource.DEFAULT_TYPE, hooks.type(ItemScriptTrigger.USE))
         assertEquals("defaultUse()", hooks.source(ItemScriptTrigger.USE))
     }
 

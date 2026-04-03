@@ -26,6 +26,22 @@ interface BaikirutoAPI {
 
     fun getScriptHandler(): BaikirutoScriptHandler
 
+    fun registerScriptType(scriptType: BaikirutoScriptType): BaikirutoScriptType {
+        return getScriptHandler().registerScriptType(scriptType)
+    }
+
+    fun unregisterScriptType(scriptTypeId: String): BaikirutoScriptType? {
+        return getScriptHandler().unregisterScriptType(scriptTypeId)
+    }
+
+    fun getScriptType(scriptTypeId: String): BaikirutoScriptType? {
+        return getScriptHandler().getScriptType(scriptTypeId)
+    }
+
+    fun getScriptTypeRegistry(): Registry<BaikirutoScriptType> {
+        return getScriptHandler().getScriptTypeRegistry()
+    }
+
     fun getItemManager(): ItemManager
 
     fun getItemHandler(): ItemHandler

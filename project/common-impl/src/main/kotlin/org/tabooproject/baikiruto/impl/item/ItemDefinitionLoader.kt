@@ -3,6 +3,7 @@ package org.tabooproject.baikiruto.impl.item
 import org.bukkit.Material
 import org.bukkit.inventory.ItemStack
 import org.tabooproject.baikiruto.core.Baikiruto
+import org.tabooproject.baikiruto.core.BaikirutoScriptSource
 import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemDisplay
 import org.tabooproject.baikiruto.core.item.ItemGroup
@@ -685,8 +686,8 @@ object ItemDefinitionLoader {
     }
 
     private fun parseMergedHooks(section: ConfigurationSection, models: List<ItemModel>): ItemScriptHooks {
-        val scripts = linkedMapOf<String, String?>()
-        val localizedScripts = linkedMapOf<String, MutableMap<String, String?>>()
+        val scripts = linkedMapOf<String, BaikirutoScriptSource?>()
+        val localizedScripts = linkedMapOf<String, MutableMap<String, BaikirutoScriptSource?>>()
         models.forEach { model ->
             collectScriptEntriesFromMap(model.data["scripts"] as? Map<*, *>, scripts)
             collectScriptEntriesFromMap(model.data["event"] as? Map<*, *>, scripts)
@@ -724,39 +725,30 @@ object ItemDefinitionLoader {
 
     private fun collectScriptEntriesFromSection(
         section: taboolib.library.configuration.ConfigurationSection?,
-        target: MutableMap<String, String?>
+        target: MutableMap<String, BaikirutoScriptSource?>
     ) {
         if (section == null) {
             return
         }
         section.getKeys(false).forEach { key ->
             val child = section.getConfigurationSection(key)
-            target[key] = if (child != null) {
-                parseScriptValue(
-                    child.get("script")
-                        ?: child.get("source")
-                        ?: child.get("content")
-                )
-            } else {
-                parseScriptValue(section.get(key))
-            }
+            target[key] = parseScriptSource(child ?: section.get(key), key)
         }
     }
 
-    private fun collectScriptEntriesFromMap(source: Map<*, *>?, target: MutableMap<String, String?>) {
+    private fun collectScriptEntriesFromMap(source: Map<*, *>?, target: MutableMap<String, BaikirutoScriptSource?>) {
         if (source == null) {
             return
         }
         source.forEach { (key, rawValue) ->
             val name = key?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
-            val script = parseScriptValue(rawValue)
-            target[name] = script
+            target[name] = parseScriptSource(rawValue, name)
         }
     }
 
     private fun collectI18nScriptEntriesFromSection(
         i18nSection: taboolib.library.configuration.ConfigurationSection?,
-        target: MutableMap<String, MutableMap<String, String?>>
+        target: MutableMap<String, MutableMap<String, BaikirutoScriptSource?>>
     ) {
         if (i18nSection == null) {
             return
@@ -772,7 +764,7 @@ object ItemDefinitionLoader {
 
     private fun collectI18nScriptEntriesFromMap(
         i18nMap: Map<*, *>?,
-        target: MutableMap<String, MutableMap<String, String?>>
+        target: MutableMap<String, MutableMap<String, BaikirutoScriptSource?>>
     ) {
         if (i18nMap == null) {
             return
@@ -793,8 +785,8 @@ object ItemDefinitionLoader {
         vararg sources: Map<String, Any?>,
         i18nSources: List<Map<String, Any?>> = emptyList()
     ): ItemScriptHooks {
-        val scripts = linkedMapOf<String, String?>()
-        val localizedScripts = linkedMapOf<String, MutableMap<String, String?>>()
+        val scripts = linkedMapOf<String, BaikirutoScriptSource?>()
+        val localizedScripts = linkedMapOf<String, MutableMap<String, BaikirutoScriptSource?>>()
         sources.forEach { source ->
             collectScriptEntriesFromMap(source, scripts)
         }
@@ -805,18 +797,18 @@ object ItemDefinitionLoader {
     }
 
     private fun buildScriptHooks(
-        scripts: Map<String, String?>,
-        localizedScripts: Map<String, Map<String, String?>>
+        scripts: Map<String, BaikirutoScriptSource?>,
+        localizedScripts: Map<String, Map<String, BaikirutoScriptSource?>>
     ): ItemScriptHooks {
-        val normalized = linkedMapOf<String, String?>()
+        val normalized = linkedMapOf<String, BaikirutoScriptSource?>()
         for ((key, source) in scripts) {
             val normalizedKey = key.trim().takeIf { it.isNotEmpty() } ?: continue
             normalized[normalizedKey] = source
         }
-        val normalizedLocalized = linkedMapOf<String, Map<String, String?>>()
+        val normalizedLocalized = linkedMapOf<String, Map<String, BaikirutoScriptSource?>>()
         for ((locale, entries) in localizedScripts) {
             val normalizedLocale = normalizeLocaleKey(locale) ?: continue
-            val localeEntries = linkedMapOf<String, String?>()
+            val localeEntries = linkedMapOf<String, BaikirutoScriptSource?>()
             for ((key, source) in entries) {
                 val normalizedKey = key.trim().takeIf { it.isNotEmpty() } ?: continue
                 localeEntries[normalizedKey] = source
@@ -825,7 +817,7 @@ object ItemDefinitionLoader {
                 normalizedLocalized[normalizedLocale] = localeEntries
             }
         }
-        return ItemScriptHooks.from(normalized, normalizedLocalized)
+        return ItemScriptHooks.fromSources(normalized, normalizedLocalized)
     }
 
     private fun normalizeLocaleKey(source: String?): String? {
@@ -1065,12 +1057,12 @@ object ItemDefinitionLoader {
         if (section == null) {
             return emptyMap()
         }
-        val mappings = linkedMapOf<String, String>()
+        val mappings = linkedMapOf<String, Map<String, String>>()
         section.getKeys(false).forEach { key ->
             val raw = section.get(key)
-            val script = parseScriptValue(raw)
-            if (!script.isNullOrBlank()) {
-                mappings[key] = script
+            val script = parseScriptSource(raw, "data-mapper:$key")
+            if (script != null) {
+                mappings[key] = script.asRuntimeMap()
             }
         }
         return if (mappings.isEmpty()) {
@@ -1084,11 +1076,11 @@ object ItemDefinitionLoader {
         if (section.isEmpty()) {
             return emptyMap()
         }
-        val mappings = linkedMapOf<String, String>()
+        val mappings = linkedMapOf<String, Map<String, String>>()
         section.forEach { (key, value) ->
-            val script = parseScriptValue(value)
-            if (!script.isNullOrBlank()) {
-                mappings[key] = script
+            val script = parseScriptSource(value, "data-mapper:$key")
+            if (script != null) {
+                mappings[key] = script.asRuntimeMap()
             }
         }
         return if (mappings.isEmpty()) {
@@ -2581,24 +2573,58 @@ object ItemDefinitionLoader {
         vararg sections: taboolib.library.configuration.ConfigurationSection?,
         i18nSection: taboolib.library.configuration.ConfigurationSection? = null
     ): ItemScriptHooks {
-        val scripts = linkedMapOf<String, String?>()
-        val localizedScripts = linkedMapOf<String, MutableMap<String, String?>>()
+        val scripts = linkedMapOf<String, BaikirutoScriptSource?>()
+        val localizedScripts = linkedMapOf<String, MutableMap<String, BaikirutoScriptSource?>>()
         sections.filterNotNull().forEach { section ->
             section.getKeys(false).forEach { key ->
                 val child = section.getConfigurationSection(key)
-                scripts[key] = if (child != null) {
-                    parseScriptValue(
-                        child.get("script")
-                            ?: child.get("source")
-                            ?: child.get("content")
-                    )
-                } else {
-                    parseScriptValue(section.get(key))
-                }
+                scripts[key] = parseScriptSource(child ?: section.get(key), key)
             }
         }
         collectI18nScriptEntriesFromSection(i18nSection, localizedScripts)
         return buildScriptHooks(scripts, localizedScripts)
+    }
+
+    private fun parseScriptSource(source: Any?, scriptId: String? = null): BaikirutoScriptSource? {
+        val parsed = when (source) {
+            null -> null
+            is BaikirutoScriptSource -> source
+            is String -> BaikirutoScriptSource.of(source)
+            is Iterable<*> -> BaikirutoScriptSource.of(source.mapNotNull { it?.toString() }.joinToString("\n"))
+            is Map<*, *> -> {
+                val type = stringValue(source["type"])
+                    ?: stringValue(source["engine"])
+                    ?: BaikirutoScriptSource.DEFAULT_TYPE
+                val content = parseScriptValue(
+                    source["script"]
+                        ?: source["source"]
+                        ?: source["content"]
+                )
+                BaikirutoScriptSource.of(content, type)
+            }
+            is ConfigurationSection -> {
+                val type = source.getString("type")
+                    ?: source.getString("engine")
+                    ?: BaikirutoScriptSource.DEFAULT_TYPE
+                val content = parseScriptValue(
+                    source.get("script")
+                        ?: source.get("source")
+                        ?: source.get("content")
+                )
+                BaikirutoScriptSource.of(content, type)
+            }
+            else -> BaikirutoScriptSource.of(source.toString())
+        } ?: return null
+        val normalized = BaikirutoScriptSource.of(parsed.content, parsed.normalizedType()) ?: return null
+        val scriptHandler = runCatching { Baikiruto.api().getScriptHandler() }.getOrNull() ?: return normalized
+        val knownType = runCatching { scriptHandler.getScriptType(normalized.normalizedType()) }.getOrNull()
+        if (knownType == null) {
+            runCatching {
+                console().sendLang("log-script-type-missing", normalized.normalizedType(), scriptId ?: "unknown")
+            }
+            return null
+        }
+        return normalized
     }
 
     private fun parseScriptValue(source: Any?): String? {

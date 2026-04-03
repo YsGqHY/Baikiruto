@@ -9,6 +9,9 @@ plugins {
     id("org.jetbrains.kotlin.jvm") version "1.9.24" apply false
 }
 
+val fluxonVersion by extra("1.6.24")
+val fluxonPluginVersion by extra("1.1.4")
+
 subprojects {
     apply(plugin = "java")
     apply(plugin = "io.izzel.taboolib")

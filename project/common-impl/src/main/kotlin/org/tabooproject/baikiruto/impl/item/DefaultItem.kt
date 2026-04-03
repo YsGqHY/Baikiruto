@@ -67,7 +67,7 @@ class DefaultItem(
         ItemScriptExecutor.execute(
             id,
             ItemScriptTrigger.BUILD,
-            scripts.source(ItemScriptTrigger.BUILD, locale),
+            scripts.entry(ItemScriptTrigger.BUILD, locale),
             stream,
             executionContext
         )
@@ -77,7 +77,7 @@ class DefaultItem(
                 ItemScriptExecutor.execute(
                     itemId = "$id:meta:${meta.id}",
                     trigger = ItemScriptTrigger.BUILD,
-                    source = meta.scripts.source(ItemScriptTrigger.BUILD, locale),
+                    source = meta.scripts.entry(ItemScriptTrigger.BUILD, locale),
                     stream = stream,
                     context = executionContext
                 )
@@ -118,7 +118,7 @@ class DefaultItem(
                 ItemScriptExecutor.execute(
                     itemId = "$id:meta:${meta.id}",
                     trigger = ItemScriptTrigger.DROP,
-                    source = meta.scripts.source(ItemScriptTrigger.DROP, locale),
+                    source = meta.scripts.entry(ItemScriptTrigger.DROP, locale),
                     stream = stream,
                     context = executionContext
                 )
@@ -129,7 +129,7 @@ class DefaultItem(
         ItemScriptExecutor.execute(
             id,
             ItemScriptTrigger.DROP,
-            scripts.source(ItemScriptTrigger.DROP, locale),
+            scripts.entry(ItemScriptTrigger.DROP, locale),
             stream,
             executionContext
         )

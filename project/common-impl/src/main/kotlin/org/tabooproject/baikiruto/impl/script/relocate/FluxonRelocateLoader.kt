@@ -2,6 +2,7 @@ package org.tabooproject.baikiruto.impl.script.relocate
 
 import org.bukkit.Bukkit
 import org.tabooproject.baikiruto.impl.script.DefaultScriptHandler
+import org.tabooproject.baikiruto.impl.script.FluxonChecker
 import org.tabooproject.baikiruto.impl.script.handler.Fluxon
 import org.tabooproject.baikiruto.impl.script.handler.FluxonHandler
 import taboolib.common.LifeCycle
@@ -27,12 +28,21 @@ object FluxonRelocateLoader {
     @Awake(LifeCycle.CONST)
     fun init() {
         if (!propertySetted) {
-            if (Bukkit.getServer().pluginManager.getPlugin("FluxonPlugin") != null) {
-                propertySetted = true
-                needToTranslate = true
-            } else {
-                DefaultScriptHandler.fluxonHandler = Fluxon
-                propertySetted = true
+            when {
+                Bukkit.getServer().pluginManager.getPlugin("FluxonPlugin") != null -> {
+                    propertySetted = true
+                    needToTranslate = true
+                }
+
+                FluxonChecker.isReady() -> {
+                    DefaultScriptHandler.fluxonHandler = Fluxon
+                    propertySetted = true
+                }
+
+                else -> {
+                    propertySetted = true
+                    return
+                }
             }
         }
         if (needToTranslate) {

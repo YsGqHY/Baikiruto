@@ -4,9 +4,9 @@ import org.bukkit.entity.Player
 import org.bukkit.event.Cancellable
 import org.tabooproject.baikiruto.core.item.Item
 import org.tabooproject.baikiruto.core.item.ItemSignal
+import org.tabooproject.baikiruto.core.item.ItemScriptHooks
 import org.tabooproject.baikiruto.core.item.ItemScriptTrigger
 import org.tabooproject.baikiruto.core.item.ItemStream
-import org.tabooproject.baikiruto.core.item.ItemScriptHooks
 import org.tabooproject.baikiruto.impl.script.item.ItemScriptExecutor
 
 object ItemScriptActionDispatcher {
@@ -44,7 +44,7 @@ object ItemScriptActionDispatcher {
         ItemScriptExecutor.execute(
             itemId = item.id,
             trigger = trigger,
-            source = item.scripts.source(trigger, locale),
+            source = item.scripts.entry(trigger, locale),
             stream = stream,
             context = executionContext
         )
@@ -53,7 +53,7 @@ object ItemScriptActionDispatcher {
             ItemScriptExecutor.execute(
                 itemId = "${item.id}:meta:${meta.id}",
                 trigger = trigger,
-                source = meta.scripts.source(trigger, locale),
+                source = meta.scripts.entry(trigger, locale),
                 stream = stream,
                 context = executionContext
             )
