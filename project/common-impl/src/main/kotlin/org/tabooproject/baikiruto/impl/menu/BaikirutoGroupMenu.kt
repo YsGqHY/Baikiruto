@@ -46,8 +46,10 @@ object BaikirutoGroupMenu {
     @SubscribeEvent(ignoreCancelled = true)
     fun onInventoryClick(event: InventoryClickEvent) {
         val player = event.whoClicked as? Player ?: return
-        val holder = event.view.topInventory.holder as? GroupMenuHolder ?: return
-        val topSize = event.view.topInventory.size
+        // 使用 event.inventory 代替 event.view.topInventory
+        // InventoryView 在 1.21+ 从 abstract class 变为 interface，直接引用会导致 IncompatibleClassChangeError
+        val holder = event.inventory.holder as? GroupMenuHolder ?: return
+        val topSize = event.inventory.size
         if (event.rawSlot >= topSize) {
             if (event.isShiftClick) {
                 event.isCancelled = true
@@ -85,11 +87,11 @@ object BaikirutoGroupMenu {
 
     @SubscribeEvent(ignoreCancelled = true)
     fun onInventoryDrag(event: InventoryDragEvent) {
-        val holder = event.view.topInventory.holder as? GroupMenuHolder ?: return
+        val holder = event.inventory.holder as? GroupMenuHolder ?: return
         if (holder.totalPages <= 0) {
             return
         }
-        val topSize = event.view.topInventory.size
+        val topSize = event.inventory.size
         if (event.rawSlots.any { it < topSize }) {
             event.isCancelled = true
         }

@@ -10,7 +10,7 @@ plugins {
 }
 
 val fluxonVersion by extra("1.6.24")
-val fluxonPluginVersion by extra("1.1.4")
+val fluxonPluginVersion by extra("1.1.8")
 
 subprojects {
     apply(plugin = "java")

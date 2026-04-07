@@ -28,7 +28,7 @@ import java.util.Base64
 object FluxonChecker {
 
     private const val FLUXON_VERSION = "1.6.24"
-    private const val FP_VERSION = "1.1.4"
+    private const val FP_VERSION = "1.1.8"
     private const val FLUXON_REPOSITORY = "https://repo.tabooproject.org/repository/releases"
     private const val MAVEN_CENTRAL_REPOSITORY = "https://repo.maven.apache.org/maven2"
     private const val BUNDLED_FLUXON_PLUGIN_CLASS = "org.tabooproject.baikiruto.impl.script.fluxon.FluxonPlugin"
@@ -116,12 +116,35 @@ object FluxonChecker {
         }
     }
 
+    /**
+     * 构建 Fluxon 运行时下载的 JAR 重定向规则。
+     *
+     * Fluxon 的传递依赖中包含大量公共库（guava → jsr305/checker-qual/errorprone 等），
+     * 如果不重定向，这些类会被注入到 Baikiruto 的类加载器中，导致其他插件
+     * （如 LuckPerms、CMILib）意外从 Baikiruto 加载到 javax.annotation 等类。
+     *
+     * 注意：guava/gson/fastutil 是服务端自带的，不能重定向，否则会导致类型不兼容。
+     */
     private fun buildCoreRelocations(): ArrayList<JarRelocation> {
+        val prefix = "${relocatedFluxonPackage()}.libs."
         return arrayListOf(
-            JarRelocation(
-                fluxonGroupId(),
-                relocatedFluxonPackage()
-            )
+            // Fluxon 自身
+            JarRelocation(fluxonGroupId(), relocatedFluxonPackage()),
+            // guava 传递依赖中的注解库
+            JarRelocation("javax.annotation.", "${prefix}javax.annotation."),
+            JarRelocation("org.checkerframework.", "${prefix}org.checkerframework."),
+            JarRelocation("com.google.errorprone.", "${prefix}com.google.errorprone."),
+            JarRelocation("com.google.j2objc.", "${prefix}com.google.j2objc."),
+            JarRelocation("com.google.thirdparty.", "${prefix}com.google.thirdparty."),
+            // ASM
+            JarRelocation("org.objectweb.asm.", "${prefix}org.objectweb.asm."),
+            // JetBrains Annotations
+            JarRelocation("org.jetbrains.annotations.", "${prefix}org.jetbrains.annotations."),
+            JarRelocation("org.intellij.lang.annotations.", "${prefix}org.intellij.lang.annotations."),
+            // JLine / JNA / Jansi
+            JarRelocation("org.jline.", "${prefix}org.jline."),
+            JarRelocation("org.fusesource.jansi.", "${prefix}org.fusesource.jansi."),
+            JarRelocation("com.sun.jna.", "${prefix}com.sun.jna."),
         )
     }
 
@@ -140,7 +163,9 @@ object FluxonChecker {
             addRepository(Repository(FLUXON_REPOSITORY))
             addRepository(Repository(MAVEN_CENTRAL_REPOSITORY))
             setIgnoreOptional(true)
-            setIgnoreException(false)
+            // 传递依赖中可能包含运行时不需要的构建工具（如 jansi → picocli-codegen），
+            // 这些制品在部分仓库中不可用，下载失败不应阻断 Fluxon 初始化
+            setIgnoreException(true)
             setDependencyScopes(scope)
             setTransitive(true)
         }
