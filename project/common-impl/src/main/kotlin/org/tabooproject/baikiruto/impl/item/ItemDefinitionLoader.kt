@@ -32,11 +32,7 @@ import java.util.concurrent.CopyOnWriteArraySet
 object ItemDefinitionLoader {
 
     private val defaultItemFiles = listOf(
-        "items/example.yml",
-        "items/blackbox/pipeline.yml",
-        "items/blackbox/components.yml",
-        "items/blackbox/meta.yml",
-        "items/blackbox/triggers.yml"
+        "items/example.yml"
     )
     private const val DEFAULT_DISPLAY_FILE = "display/def.yml"
     private const val LEGACY_COLOR_CODES = "0123456789AaBbCcDdEeFfKkLlMmNnOoRrXx"
