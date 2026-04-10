@@ -88,6 +88,19 @@ object VersionAdapterService {
 
     private fun detectProfile(): VersionFeatureProfile {
         val versionId = MinecraftVersion.versionId
+
+        // 26.1+: 必须优先于所有旧版版本号判断
+        // 26.1 使用 Data Component 存储，支持 item model，不支持旧版 custom model data
+        if (versionId >= 260100) {
+            return VersionFeatureProfile(
+                profileId = "v26_1+",
+                legacyNbtStorage = false,
+                dataComponentStorage = true,
+                supportsCustomModelData = false,
+                supportsItemModel = true
+            )
+        }
+
         val in112Range = versionId in 11200..11299
         val in120Range = versionId in 12000..12099
         val in121Range = versionId in 12100..12199

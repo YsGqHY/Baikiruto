@@ -10,7 +10,9 @@ import taboolib.common.env.JarRelocation
 import taboolib.common.env.RuntimeEnv
 import taboolib.common.env.RuntimeEnvDependency
 import taboolib.common.inject.ClassVisitorHandler
+import taboolib.common.io.extraLoadedClasses
 import taboolib.common.io.runningClassMap
+import taboolib.common.io.runningClassMapInJar
 import taboolib.common.platform.Awake
 import java.util.Base64
 
@@ -67,6 +69,9 @@ object FluxonChecker {
         return startupFailure?.message
     }
 
+    private const val MAX_RETRY = 5
+    private const val RETRY_DELAY_MS = 3000L
+
     @Awake(LifeCycle.CONST)
     fun download() {
         if (Bukkit.getPluginManager().getPlugin("FluxonPlugin") != null) {
@@ -77,39 +82,53 @@ object FluxonChecker {
             source = Source.BUNDLED
             return
         }
-        try {
-            val scope = listOf(DependencyScope.RUNTIME, DependencyScope.COMPILE)
-            val coreRelocations = buildCoreRelocations()
-            load(fluxonCoordinate("core", FLUXON_VERSION), scope, coreRelocations)
-            load(fluxonCoordinate("inst-core", FLUXON_VERSION), scope, coreRelocations)
-
-            val pluginRelocations = ArrayList(coreRelocations)
-            if (!PrimitiveSettings.IS_ISOLATED_MODE) {
-                pluginRelocations.add(JarRelocation(RuntimeEnv.KOTLIN_ID + ".", PrimitiveSettings.getRelocatedKotlinVersion() + "."))
-                pluginRelocations.add(JarRelocation(RuntimeEnv.KOTLIN_COROUTINES_ID + ".", PrimitiveSettings.getRelocatedKotlinCoroutinesVersion() + "."))
-                pluginRelocations.add(JarRelocation(PrimitiveSettings.ID, PrimitiveLoader.TABOOLIB_PACKAGE_NAME))
+        var lastError: Throwable? = null
+        for (attempt in 1..MAX_RETRY) {
+            try {
+                downloadAll()
+                source = if (isBundledAvailable()) {
+                    Source.RUNTIME_DOWNLOADED
+                } else {
+                    Source.UNAVAILABLE
+                }
+                if (source == Source.RUNTIME_DOWNLOADED && attempt > 1) {
+                    println("[Baikiruto] Fluxon dependencies downloaded successfully (attempt $attempt/$MAX_RETRY)")
+                }
+                if (source == Source.UNAVAILABLE) {
+                    BaikirutoLog.fluxonBootstrapFailed(
+                        "Fluxon runtime download finished but relocated runtime classes are still unavailable. source=${source.id}"
+                    )
+                }
+                return
+            } catch (ex: Throwable) {
+                lastError = ex
+                if (attempt < MAX_RETRY) {
+                    Thread.sleep(RETRY_DELAY_MS)
+                }
             }
-            load(fluxonPluginCoordinate("core", FP_VERSION), scope, pluginRelocations)
-            load(fluxonPluginCoordinate("common", FP_VERSION), scope, pluginRelocations)
-            load(fluxonPluginCoordinate("platform-bukkit", FP_VERSION), scope, pluginRelocations)
-
-            source = if (isBundledAvailable()) {
-                Source.RUNTIME_DOWNLOADED
-            } else {
-                Source.UNAVAILABLE
-            }
-            if (source == Source.UNAVAILABLE) {
-                BaikirutoLog.fluxonBootstrapFailed(
-                    "Fluxon runtime download finished but relocated runtime classes are still unavailable. source=${source.id}"
-                )
-            }
-        } catch (ex: Throwable) {
-            source = Source.UNAVAILABLE
-            startupFailure = ex
-            BaikirutoLog.fluxonBootstrapFailed(
-                "Unable to prepare Fluxon runtime. source=RUNTIME_DOWNLOAD, repositories=$FLUXON_REPOSITORY,$MAVEN_CENTRAL_REPOSITORY, cause=${ex.message}"
-            )
         }
+        source = Source.UNAVAILABLE
+        startupFailure = lastError
+        BaikirutoLog.fluxonBootstrapFailed(
+            "Unable to prepare Fluxon runtime after $MAX_RETRY attempts. source=RUNTIME_DOWNLOAD, repositories=$FLUXON_REPOSITORY,$MAVEN_CENTRAL_REPOSITORY, cause=${lastError?.message}"
+        )
+    }
+
+    private fun downloadAll() {
+        val scope = listOf(DependencyScope.RUNTIME, DependencyScope.COMPILE)
+        val coreRelocations = buildCoreRelocations()
+        load(fluxonCoordinate("core", FLUXON_VERSION), scope, coreRelocations)
+        load(fluxonCoordinate("inst-core", FLUXON_VERSION), scope, coreRelocations)
+
+        val pluginRelocations = ArrayList(coreRelocations)
+        if (!PrimitiveSettings.IS_ISOLATED_MODE) {
+            pluginRelocations.add(JarRelocation(RuntimeEnv.KOTLIN_ID + ".", PrimitiveSettings.getRelocatedKotlinVersion() + "."))
+            pluginRelocations.add(JarRelocation(RuntimeEnv.KOTLIN_COROUTINES_ID + ".", PrimitiveSettings.getRelocatedKotlinCoroutinesVersion() + "."))
+            pluginRelocations.add(JarRelocation(PrimitiveSettings.ID, PrimitiveLoader.TABOOLIB_PACKAGE_NAME))
+        }
+        load(fluxonPluginCoordinate("core", FP_VERSION), scope, pluginRelocations)
+        load(fluxonPluginCoordinate("common", FP_VERSION), scope, pluginRelocations)
+        load(fluxonPluginCoordinate("platform-bukkit", FP_VERSION), scope, pluginRelocations)
     }
 
     /**
@@ -145,16 +164,30 @@ object FluxonChecker {
     }
 
     private fun load(url: String, scope: List<DependencyScope>, rel: List<JarRelocation>) {
+        val baseDir = java.io.File(PrimitiveSettings.FILE_LIBS)
+        // 第一步：从 Fluxon 仓库非传递下载主包自身
         RuntimeEnvDependency().loadDependency(
             url,
-            java.io.File(PrimitiveSettings.FILE_LIBS),
+            baseDir,
             rel,
             FLUXON_REPOSITORY,
             true,   // ignoreOptional
             true,   // ignoreException
-            true,   // transitive
+            false,  // transitive=false，只下载主包
             scope,
-            false   // external（需要被类扫描器扫到）
+            false   // external
+        )
+        // 第二步：从 Maven Central 传递下载依赖树（jline 等第三方库）
+        RuntimeEnvDependency().loadDependency(
+            url,
+            baseDir,
+            rel,
+            MAVEN_CENTRAL_REPOSITORY,
+            true,   // ignoreOptional
+            true,   // ignoreException
+            true,   // transitive=true，解析传递依赖
+            scope,
+            false   // external
         )
     }
 
@@ -191,7 +224,19 @@ object FluxonChecker {
 
     @Awake(LifeCycle.INIT)
     fun init() {
-        if (isCentral || isUnavailable()) return
+        if (isCentral) return
+        // 如果 CONST 阶段下载失败，在 INIT 阶段重试
+        if (isUnavailable()) {
+            System.err.println("[Baikiruto] Fluxon was unavailable after CONST phase, retrying download...")
+            download()
+        }
+        if (isUnavailable()) {
+            // Fluxon 不可用时，从类注册表中移除所有 Fluxon 类，
+            // 防止 TabooLib 在 DISABLE 等后续生命周期中尝试访问不存在的类导致 NoClassDefFoundError
+            val prefix = relocatedFluxonPackage()
+            extraLoadedClasses.keys.removeAll { it.startsWith(prefix) }
+            return
+        }
         val fluxonClasses = runningClassMap.filter { it.key.startsWith(relocatedFluxonPackage()) }
         // 预扫描：收集所有标注了 @Requires 但条件不满足的 Fluxon 类（JVM 内部名）
         val excludedClasses = collectExcludedClasses(fluxonClasses.values)

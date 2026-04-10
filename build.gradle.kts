@@ -30,11 +30,13 @@ subprojects {
             install(CommandHelper)
             install(I18n, MinecraftChat)
             install(Metrics)
-
+            
             forceDownloadInDev = false
             enableLegacyDependencyResolver = true
         }
-        version { taboolib = "6.2.4-99fb800" }
+        version {
+            taboolib = "6.3.0-88720d8"
+        }
     }
 
     // 仓库
