@@ -131,6 +131,7 @@ log-watcher-reload-failed: '&c文件监视器重载失败: {0}'
 
 log-player-data-bootstrap-failed: '&c玩家数据引导失败: {0}'
 log-player-data-setup-failed: '&c为 {0} 设置数据容器失败: {1}'
+log-player-data-release-failed: '&c为 {0} 释放数据容器失败: {1}'
 log-player-data-mysql: '&7玩家数据存储已初始化: type=MYSQL, host={0}:{1}, table={2}'
 log-player-data-sqlite: '&7玩家数据存储已初始化: type=SQLITE, file={0}, table={1}'
 

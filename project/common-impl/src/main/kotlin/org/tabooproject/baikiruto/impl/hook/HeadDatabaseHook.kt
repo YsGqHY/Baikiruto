@@ -12,6 +12,9 @@ import taboolib.common.platform.event.SubscribeEvent
 
 object HeadDatabaseHook {
 
+    private const val HEAD_DATABASE_PLUGIN = "HeadDatabase"
+    private const val HEAD_DATABASE_API_CLASS = "me.arcaniax.hdb.api.HeadDatabaseAPI"
+
     @Volatile
     private var databaseLoaded = false
 
@@ -31,13 +34,13 @@ object HeadDatabaseHook {
             return
         }
         val rawId = runtimeData["skull-head-database"]?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val api = resolveApi() ?: return
         val id = normalizeHeadDatabaseId(rawId)
-        if (!isHookAvailable()) {
-            return
+        val texture = try {
+            api.getBase64(id)
+        } catch (_: Throwable) {
+            null
         }
-        val api = runCatching { HeadDatabaseAPI() }.getOrNull() ?: return
-        val texture = runCatching { api.getBase64(id) }
-            .getOrNull()
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?: return
@@ -50,24 +53,27 @@ object HeadDatabaseHook {
             return
         }
         val rawId = runtimeData["skull-head-database"]?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return
-        if (!isHookAvailable()) {
-            return
-        }
-        val api = runCatching { HeadDatabaseAPI() }.getOrNull() ?: return
+        val api = resolveApi() ?: return
         val id = normalizeHeadDatabaseId(rawId)
-        val headItem = runCatching { api.getItemHead(id) }
-            .getOrNull()
+        val headItem = try {
+            api.getItemHead(id)
+        } catch (_: Throwable) {
+            null
+        }
             ?.clone()
             ?: return
 
-        runCatching { api.getBase64(headItem) }
-            .getOrNull()
+        val texture = try {
+            api.getBase64(headItem)
+        } catch (_: Throwable) {
+            null
+        }
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
-            ?.let {
-                runtimeData["skull-texture"] = it
-                runtimeData.remove("skull-url")
-            }
+        if (texture != null) {
+            runtimeData["skull-texture"] = texture
+            runtimeData.remove("skull-url")
+        }
 
         val targetMeta = itemStack.itemMeta ?: return
         val sourceMeta = headItem.itemMeta ?: return
@@ -78,21 +84,39 @@ object HeadDatabaseHook {
     }
 
     fun isHookAvailable(): Boolean {
-        if (!isApiPresent()) {
-            return false
-        }
-        return runCatching { Bukkit.getPluginManager().isPluginEnabled("HeadDatabase") }.getOrDefault(false)
+        return isPluginEnabled() && isApiPresent()
     }
 
     fun isDatabaseLoaded(): Boolean {
         return databaseLoaded && isHookAvailable()
     }
 
-    private fun isApiPresent(): Boolean {
-        return runCatching {
+    private fun resolveApi(): HeadDatabaseAPI? {
+        if (!isHookAvailable()) {
+            return null
+        }
+        return try {
             HeadDatabaseAPI()
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun isPluginEnabled(): Boolean {
+        return try {
+            Bukkit.getPluginManager().isPluginEnabled(HEAD_DATABASE_PLUGIN)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun isApiPresent(): Boolean {
+        return try {
+            Class.forName(HEAD_DATABASE_API_CLASS, false, javaClass.classLoader)
             true
-        }.getOrDefault(false)
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     private fun normalizeHeadDatabaseId(raw: String): String {

@@ -131,6 +131,7 @@ log-watcher-reload-failed: '&cFile watcher reload failed: {0}'
 
 log-player-data-bootstrap-failed: '&cPlayer data bootstrap failed: {0}'
 log-player-data-setup-failed: '&cFailed to setup data container for {0}: {1}'
+log-player-data-release-failed: '&cFailed to release data container for {0}: {1}'
 log-player-data-mysql: '&7Player data storage initialized: type=MYSQL, host={0}:{1}, table={2}'
 log-player-data-sqlite: '&7Player data storage initialized: type=SQLITE, file={0}, table={1}'
 

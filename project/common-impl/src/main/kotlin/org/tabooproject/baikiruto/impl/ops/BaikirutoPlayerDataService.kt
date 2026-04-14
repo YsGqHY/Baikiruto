@@ -29,13 +29,14 @@ object BaikirutoPlayerDataService {
 
     @Awake(LifeCycle.ENABLE)
     private fun onEnable() {
-        initialized = runCatching {
+        initialized = try {
             initializeDatabase()
             setupOnlinePlayers()
             true
-        }.onFailure {
-            console().sendLang("log-player-data-bootstrap-failed", it.message.orEmpty())
-        }.getOrDefault(false)
+        } catch (ex: Throwable) {
+            console().sendLang("log-player-data-bootstrap-failed", ex.message.orEmpty())
+            false
+        }
     }
 
     @SubscribeEvent
@@ -43,10 +44,10 @@ object BaikirutoPlayerDataService {
         if (!initialized) {
             return
         }
-        runCatching {
+        try {
             adaptPlayer(event.player).setupDataContainer(BaikirutoSettings.databaseUsernameMode)
-        }.onFailure {
-            console().sendLang("log-player-data-setup-failed", event.player.name, it.message.orEmpty())
+        } catch (ex: Throwable) {
+            console().sendLang("log-player-data-setup-failed", event.player.name, ex.message.orEmpty())
         }
     }
 
@@ -55,8 +56,10 @@ object BaikirutoPlayerDataService {
         if (!initialized) {
             return
         }
-        runCatching {
+        try {
             adaptPlayer(event.player).releaseDataContainer()
+        } catch (ex: Throwable) {
+            console().sendLang("log-player-data-release-failed", event.player.name, ex.message.orEmpty())
         }
     }
 
@@ -84,8 +87,10 @@ object BaikirutoPlayerDataService {
 
     private fun setupOnlinePlayers() {
         Bukkit.getOnlinePlayers().forEach { player ->
-            runCatching {
+            try {
                 adaptPlayer(player).setupDataContainer(BaikirutoSettings.databaseUsernameMode)
+            } catch (ex: Throwable) {
+                console().sendLang("log-player-data-setup-failed", player.name, ex.message.orEmpty())
             }
         }
     }

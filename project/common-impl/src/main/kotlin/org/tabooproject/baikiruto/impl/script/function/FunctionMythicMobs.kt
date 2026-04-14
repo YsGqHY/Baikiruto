@@ -98,82 +98,132 @@ object FunctionMythicMobs {
 
         @Export(shared = true)
         fun getMob(entity: Entity): Mob? {
-            return runCatching { Mythic.API.getMob(entity) }.getOrNull()
+            if (!isLoaded()) {
+                return null
+            }
+            return Mythic.API.getMob(entity)
         }
 
         @Export(shared = true)
         fun getMobByUUID(uuid: String): Mob? {
-            val parsed = runCatching { UUID.fromString(uuid) }.getOrNull() ?: return null
-            return runCatching { Mythic.API.getMob(parsed) }.getOrNull()
+            if (!isLoaded()) {
+                return null
+            }
+            val parsed = parseUuid(uuid) ?: return null
+            return Mythic.API.getMob(parsed)
         }
 
         @Export(shared = true)
         fun getMobType(id: String): MobType? {
-            return runCatching { Mythic.API.getMobType(id) }.getOrNull()
+            if (!isLoaded()) {
+                return null
+            }
+            return Mythic.API.getMobType(id)
         }
 
         @Export(shared = true)
         fun getMobIds(): List<String> {
-            return runCatching { Mythic.API.getMobIDList() }.getOrDefault(emptyList())
+            if (!isLoaded()) {
+                return emptyList()
+            }
+            return Mythic.API.getMobIDList()
         }
 
         @Export(shared = true)
         fun spawnMob(id: String, location: Location, level: Double): Mob? {
-            val mobType = runCatching { Mythic.API.getMobType(id) }.getOrNull() ?: return null
-            return runCatching { mobType.spawn(location, level) }.getOrNull()
+            if (!isLoaded()) {
+                return null
+            }
+            val mobType = Mythic.API.getMobType(id) ?: return null
+            return mobType.spawn(location, level)
         }
 
         @Export(shared = true)
         fun isMythicMob(entity: Entity): Boolean {
-            return runCatching { Mythic.API.getMob(entity) }.getOrNull() != null
+            if (!isLoaded()) {
+                return false
+            }
+            return Mythic.API.getMob(entity) != null
         }
 
         // ── 物品 ──
 
         @Export(shared = true)
         fun getItem(id: String): ItemStack? {
-            return runCatching { Mythic.API.getItemStack(id) }.getOrNull()
+            if (!isLoaded()) {
+                return null
+            }
+            return Mythic.API.getItemStack(id)
         }
 
         @Export(shared = true)
         fun getItemWithPlayer(id: String, player: Player): ItemStack? {
-            return runCatching { Mythic.API.getItemStack(id, player) }.getOrNull()
+            if (!isLoaded()) {
+                return null
+            }
+            return Mythic.API.getItemStack(id, player)
         }
 
         @Export(shared = true)
         fun getItemId(itemStack: ItemStack): String? {
-            return runCatching { Mythic.API.getItemId(itemStack) }.getOrNull()
+            if (!isLoaded()) {
+                return null
+            }
+            return Mythic.API.getItemId(itemStack)
         }
 
         @Export(shared = true)
         fun getItemIds(): List<String> {
-            return runCatching { Mythic.API.getItemIDList() }.getOrDefault(emptyList())
+            if (!isLoaded()) {
+                return emptyList()
+            }
+            return Mythic.API.getItemIDList()
         }
 
         // ── 技能 ──
 
         @Export(shared = true)
         fun castSkill(caster: Entity, skillName: String, power: Float) {
-            runCatching { Mythic.API.castSkill(caster, skillName, power = power) }
+            if (!isLoaded()) {
+                return
+            }
+            Mythic.API.castSkill(caster, skillName, power = power)
         }
 
         @Export(shared = true)
         fun castSkillAt(caster: Entity, skillName: String, target: LivingEntity, power: Float) {
-            runCatching { Mythic.API.castSkill(caster, skillName, target, power = power) }
+            if (!isLoaded()) {
+                return
+            }
+            Mythic.API.castSkill(caster, skillName, target, power = power)
         }
 
         // ── 仇恨 ──
 
         @Export(shared = true)
         fun addThreat(entity: Entity, target: LivingEntity, amount: Double) {
-            val mob = runCatching { Mythic.API.getMob(entity) }.getOrNull() ?: return
-            runCatching { mob.addThreat(entity, target, amount) }
+            if (!isLoaded()) {
+                return
+            }
+            val mob = Mythic.API.getMob(entity) ?: return
+            mob.addThreat(entity, target, amount)
         }
 
         @Export(shared = true)
         fun reduceThreat(entity: Entity, target: LivingEntity, amount: Double) {
-            val mob = runCatching { Mythic.API.getMob(entity) }.getOrNull() ?: return
-            runCatching { mob.reduceThreat(entity, target, amount) }
+            if (!isLoaded()) {
+                return
+            }
+            val mob = Mythic.API.getMob(entity) ?: return
+            mob.reduceThreat(entity, target, amount)
+        }
+
+        private fun parseUuid(value: String): UUID? {
+            return try {
+                UUID.fromString(value)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
         }
     }
 }

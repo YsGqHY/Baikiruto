@@ -76,18 +76,28 @@ object LegacyTextColorizer {
      */
     private object MiniMessageBridge {
 
-        val available: Boolean = runCatching {
-            Class.forName("net.kyori.adventure.text.minimessage.MiniMessage")
-            Class.forName("net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer")
-            true
-        }.getOrDefault(false)
+        private const val MINI_MESSAGE_CLASS = "net.kyori.adventure.text.minimessage.MiniMessage"
+        private const val LEGACY_SERIALIZER_CLASS = "net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer"
+
+        val available: Boolean = isClassAvailable(MINI_MESSAGE_CLASS) && isClassAvailable(LEGACY_SERIALIZER_CLASS)
 
         fun serializeToLegacy(source: String): String? {
             if (!available) return null
-            return runCatching {
+            return try {
                 val component = MiniMessage.miniMessage().deserialize(source)
                 LegacyComponentSerializer.legacySection().serialize(component)
-            }.getOrNull()
+            } catch (_: Throwable) {
+                null
+            }
+        }
+
+        private fun isClassAvailable(name: String): Boolean {
+            return try {
+                Class.forName(name, false, javaClass.classLoader)
+                true
+            } catch (_: Throwable) {
+                false
+            }
         }
     }
 
