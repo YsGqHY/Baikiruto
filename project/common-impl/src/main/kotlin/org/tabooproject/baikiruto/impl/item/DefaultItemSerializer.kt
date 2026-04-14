@@ -88,10 +88,7 @@ object DefaultItemSerializer : ItemSerializer {
             dataElement.isJsonPrimitive -> {
                 val raw = readString(dataElement).orEmpty()
                 if (raw.startsWith("{") && raw.endsWith("}")) {
-                    runCatching { JsonParser.parseString(raw) }
-                        .getOrNull()
-                        ?.takeIf { it.isJsonObject }
-                        ?.asJsonObject
+                    parseJsonObjectOrNull(raw)
                         ?.let { parsed -> runtimeData.putAll(jsonObjectToMapCompat(parsed)) }
                 }
             }
@@ -171,36 +168,34 @@ object DefaultItemSerializer : ItemSerializer {
         return null
     }
 
+    private fun parseJsonObjectOrNull(raw: String): JsonObject? {
+        return try {
+            JsonParser.parseString(raw)
+                .takeIf { it.isJsonObject }
+                ?.asJsonObject
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
     private fun readString(source: JsonElement?): String? {
         if (source == null || source.isJsonNull || !source.isJsonPrimitive) {
             return null
         }
-        return runCatching { source.asString.trim() }
-            .getOrNull()
+        return source.asString.trim()
     }
 
     private fun readInt(source: JsonElement?, defaultValue: Int): Int {
-        if (source == null || source.isJsonNull || !source.isJsonPrimitive) {
-            return defaultValue
-        }
-        val raw = runCatching { source.asString.trim() }.getOrNull() ?: return defaultValue
+        val raw = readString(source) ?: return defaultValue
         return raw.toIntOrNull() ?: defaultValue
     }
 
     private fun readLong(source: JsonElement?): Long? {
-        if (source == null || source.isJsonNull || !source.isJsonPrimitive) {
-            return null
-        }
-        return runCatching { source.asString.trim() }
-            .getOrNull()
-            ?.toLongOrNull()
+        return readString(source)?.toLongOrNull()
     }
 
     private fun readBoolean(source: JsonElement?): Boolean? {
-        if (source == null || source.isJsonNull || !source.isJsonPrimitive) {
-            return null
-        }
-        val raw = runCatching { source.asString.trim() }.getOrNull()?.lowercase(Locale.ENGLISH) ?: return null
+        val raw = readString(source)?.lowercase(Locale.ENGLISH) ?: return null
         return when (raw) {
             "true", "1", "yes", "on" -> true
             "false", "0", "no", "off" -> false
@@ -214,12 +209,7 @@ object DefaultItemSerializer : ItemSerializer {
         }
         if (source.isJsonArray) {
             return source.asJsonArray.mapNotNull { element ->
-                if (!element.isJsonPrimitive) {
-                    return@mapNotNull null
-                }
-                runCatching { element.asString.trim() }
-                    .getOrNull()
-                    ?.takeIf { it.isNotEmpty() }
+                readString(element)?.takeIf { it.isNotEmpty() }
             }
         }
         if (source.isJsonPrimitive) {
@@ -232,17 +222,21 @@ object DefaultItemSerializer : ItemSerializer {
     }
 
     private fun buildFallbackItemStackData(itemId: String, amount: Int): String {
-        return runCatching {
-            val itemStack = if (itemId.startsWith("minecraft:", ignoreCase = true)) {
+        val itemStack = try {
+            if (itemId.startsWith("minecraft:", ignoreCase = true)) {
                 val materialName = itemId.substringAfter(':')
                     .uppercase(Locale.ENGLISH)
                 ItemStack(Material.matchMaterial(materialName) ?: Material.STONE)
             } else {
-                Baikiruto.api().buildItem(itemId) ?: ItemStack(Material.STONE)
+                Baikiruto.apiOrNull()?.buildItem(itemId) ?: ItemStack(Material.STONE)
             }
-            itemStack.amount = amount.coerceAtLeast(1)
+        } catch (_: Throwable) {
+            return "AA=="
+        }
+        itemStack.amount = amount.coerceAtLeast(1)
+        return try {
             encodeItemStack(itemStack)
-        }.getOrElse {
+        } catch (_: Throwable) {
             "AA=="
         }
     }
@@ -291,12 +285,18 @@ object DefaultItemSerializer : ItemSerializer {
     }
 
     private fun decodeItemStack(raw: String): ItemStack {
-        val bytes = runCatching { Base64.getDecoder().decode(raw) }.getOrNull() ?: return ItemStack(Material.STONE)
+        val bytes = try {
+            Base64.getDecoder().decode(raw)
+        } catch (_: IllegalArgumentException) {
+            return ItemStack(Material.STONE)
+        }
         val input = ByteArrayInputStream(bytes)
-        return runCatching {
+        return try {
             BukkitObjectInputStream(input).use { stream ->
                 (stream.readObject() as? ItemStack) ?: ItemStack(Material.STONE)
             }
-        }.getOrDefault(ItemStack(Material.STONE))
+        } catch (_: Throwable) {
+            ItemStack(Material.STONE)
+        }
     }
 }
