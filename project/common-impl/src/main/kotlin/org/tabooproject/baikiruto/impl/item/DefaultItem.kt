@@ -141,7 +141,7 @@ class DefaultItem(
             return normalizeLocale(direct)
         }
         val fallbackPlayer = player ?: context["sender"] as? Player
-        return normalizeLocale(runCatching { fallbackPlayer?.locale }.getOrNull())
+        return normalizeLocale(fallbackPlayer?.localeOrNull())
     }
 
     private fun normalizeLocale(value: String?): String? {

@@ -8,7 +8,6 @@ import org.tabooproject.baikiruto.impl.item.ItemDefinitionLoader
 import org.tabooproject.baikiruto.impl.metrics.BaikirutoMetrics
 import org.tabooproject.baikiruto.impl.script.FluxonChecker
 import org.tabooproject.baikiruto.impl.version.VersionAdapterService
-import taboolib.library.reflex.LazyClass
 
 object BaikirutoDiagnostics {
 
@@ -17,7 +16,7 @@ object BaikirutoDiagnostics {
      * 输出为 key=value 技术格式，面向管理员/开发者，有意不通过 lang 系统国际化。
      */
     fun lines(): List<String> {
-        val cacheStats = runCatching { Baikiruto.api().getScriptHandler().cacheStats() }.getOrNull()
+        val cacheStats = Baikiruto.apiOrNull()?.getScriptHandler()?.cacheStats()
         val cacheHitRate = cacheStats?.hitRate()?.times(100.0)?.let { "%.2f".format(it) } ?: "0.00"
         val version = VersionAdapterService.currentProfile()
         val registeredItems = BaikirutoMetrics.registeredItemCount()
@@ -26,7 +25,7 @@ object BaikirutoDiagnostics {
         val registeredDisplays = BaikirutoMetrics.registeredDisplayCount()
         val registeredGroups = BaikirutoMetrics.registeredGroupCount()
         return listOf(
-            "server=${runCatching { Bukkit.getBukkitVersion() }.getOrDefault("unknown")}",
+            "server=${serverVersion()}",
             "scriptEngine=FLUXON_ONLY",
             "versionProfile=${version.profileId}",
             "storageMode=${if (version.dataComponentStorage) "DATA_COMPONENTS" else "LEGACY_NBT"}",
@@ -57,9 +56,20 @@ object BaikirutoDiagnostics {
         )
     }
 
+    private fun serverVersion(): String {
+        return try {
+            Bukkit.getBukkitVersion()
+        } catch (_: Throwable) {
+            "unknown"
+        }
+    }
+
     private fun isClassAvailable(name: String): Boolean {
-        return runCatching {
-            LazyClass.of(source = name, dimensions = 0, isPrimitive = false, classFinder = null).isExist
-        }.getOrDefault(false)
+        return try {
+            Class.forName(name, false, javaClass.classLoader)
+            true
+        } catch (_: Throwable) {
+            false
+        }
     }
 }

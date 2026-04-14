@@ -120,12 +120,11 @@ class DefaultItemStream(
     }
 
     override fun isVanilla(): Boolean {
-        return runCatching { Baikiruto.api().getItem(itemId) }
-            .getOrNull() == null
+        return resolveManagedItem() == null
     }
 
     override fun isOutdated(): Boolean {
-        val item = runCatching { Baikiruto.api().getItem(itemId) }.getOrNull() ?: return false
+        val item = resolveManagedItem() ?: return false
         val latestHash = if (item is DefaultItem) {
             item.latestVersionHash()
         } else {
@@ -135,7 +134,7 @@ class DefaultItemStream(
     }
 
     override fun rebuild(player: Player?): ItemStream {
-        val item = runCatching { Baikiruto.api().getItem(itemId) }.getOrNull() ?: return this
+        val item = resolveManagedItem() ?: return this
         val context = LinkedHashMap<String, Any?>().apply {
             putAll(invocationContext)
             val resolvedPlayer = player ?: invocationContext["player"] as? Player ?: invocationContext["sender"] as? Player
@@ -280,7 +279,7 @@ class DefaultItemStream(
     }
 
     private fun dispatchReleaseScripts(trigger: ItemScriptTrigger, context: Map<String, Any?>) {
-        val item = runCatching { Baikiruto.api().getItem(itemId) }.getOrNull() ?: return
+        val item = resolveManagedItem() ?: return
         if (ItemScriptActionDispatcher.hasAction(item, trigger, context)) {
             ItemScriptActionDispatcher.dispatch(item, trigger, this, context)
         }
@@ -344,7 +343,7 @@ class DefaultItemStream(
         source: Any?,
         context: MutableMap<String, Any?>
     ) {
-        val api = runCatching { Baikiruto.api() }.getOrNull() ?: return
+        val api = Baikiruto.apiOrNull() ?: return
         val manager = api.getItemManager()
         val item = api.getItem(itemId)
         val preferredDisplayId = (runtimeDataBacking["display-id"] as? String)
@@ -785,8 +784,7 @@ class DefaultItemStream(
     }
 
     private fun resolveLocale(player: Player): String? {
-        return runCatching { player.locale }
-            .getOrNull()
+        return player.localeOrNull()
             ?.trim()
             ?.takeIf { it.isNotBlank() }
     }
@@ -872,6 +870,8 @@ class DefaultItemStream(
     private fun ensureUnlocked(action: String) {
         check(!locked) { "ItemStream[$itemId] is locked, cannot invoke $action." }
     }
+
+    private fun resolveManagedItem() = Baikiruto.apiOrNull()?.getItem(itemId)
 
     private fun copyRuntimeDataFrom(source: Map<String, Any?>) {
         source.forEach { (key, value) ->

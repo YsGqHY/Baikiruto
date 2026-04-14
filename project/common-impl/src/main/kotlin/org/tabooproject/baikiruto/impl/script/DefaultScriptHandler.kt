@@ -131,21 +131,15 @@ class DefaultScriptHandler : BaikirutoScriptHandler {
         }
 
         override fun invalidate(id: String) {
-            runCatching {
-                resolveFluxonHandler().invalidate(id)
-            }
+            resolveFluxonHandler().invalidate(id)
         }
 
         override fun invalidateByPrefix(prefix: String) {
-            runCatching {
-                resolveFluxonHandler().invalidateByPrefix(prefix)
-            }
+            resolveFluxonHandler().invalidateByPrefix(prefix)
         }
 
         override fun cacheStats(): ScriptCacheStats {
-            return runCatching {
-                resolveFluxonHandler().cacheStats()
-            }.getOrDefault(ScriptCacheStats())
+            return resolveFluxonHandler().cacheStats()
         }
     }
 

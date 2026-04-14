@@ -1,5 +1,6 @@
 package org.tabooproject.baikiruto.impl.item
 
+import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.core.item.ItemStream
@@ -14,4 +15,12 @@ fun ItemStack?.toBaikirutoStreamOrNull(): ItemStream? {
 
 fun ItemStack.toBaikirutoStream(): ItemStream {
     return toBaikirutoStreamOrNull() ?: error("This item is not a Baikiruto managed item.")
+}
+
+fun Player.localeOrNull(): String? {
+    return try {
+        locale
+    } catch (_: Throwable) {
+        null
+    }
 }

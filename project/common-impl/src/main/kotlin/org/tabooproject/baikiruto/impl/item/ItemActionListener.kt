@@ -882,8 +882,7 @@ object ItemActionListener {
     }
 
     private fun resolveLocale(player: Player): String? {
-        return runCatching { player.locale }
-            .getOrNull()
+        return player.localeOrNull()
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?.replace('-', '_')

@@ -2612,12 +2612,10 @@ object ItemDefinitionLoader {
             else -> BaikirutoScriptSource.of(source.toString())
         } ?: return null
         val normalized = BaikirutoScriptSource.of(parsed.content, parsed.normalizedType()) ?: return null
-        val scriptHandler = runCatching { Baikiruto.api().getScriptHandler() }.getOrNull() ?: return normalized
-        val knownType = runCatching { scriptHandler.getScriptType(normalized.normalizedType()) }.getOrNull()
+        val scriptHandler = Baikiruto.apiOrNull()?.getScriptHandler() ?: return normalized
+        val knownType = scriptHandler.getScriptType(normalized.normalizedType())
         if (knownType == null) {
-            runCatching {
-                console().sendLang("log-script-type-missing", normalized.normalizedType(), scriptId ?: "unknown")
-            }
+            console().sendLang("log-script-type-missing", normalized.normalizedType(), scriptId ?: "unknown")
             return null
         }
         return normalized

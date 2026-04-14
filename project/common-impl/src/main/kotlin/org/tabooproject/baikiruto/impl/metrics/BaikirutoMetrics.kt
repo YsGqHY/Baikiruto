@@ -60,40 +60,35 @@ object BaikirutoMetrics {
     }
 
     fun registeredItemCount(): Int {
-        return runCatching {
-            Baikiruto.api().getItemRegistry().keys().size
-        }.getOrDefault(0)
+        return readMetric { it.getItemRegistry().keys().size }
     }
 
     fun registeredScriptCount(): Int {
-        return runCatching {
-            Baikiruto.api().getItemRegistry().values()
+        return readMetric { api ->
+            api.getItemRegistry().values()
                 .sumOf { item -> item.collectScripts().size }
-        }.getOrDefault(0)
+        }
     }
 
     fun registeredModelCount(): Int {
-        return runCatching {
-            Baikiruto.api().getModelRegistry().keys().size
-        }.getOrDefault(0)
+        return readMetric { it.getModelRegistry().keys().size }
     }
 
     fun registeredDisplayCount(): Int {
-        return runCatching {
-            Baikiruto.api().getDisplayRegistry().keys().size
-        }.getOrDefault(0)
+        return readMetric { it.getDisplayRegistry().keys().size }
     }
 
     fun registeredGroupCount(): Int {
-        return runCatching {
-            Baikiruto.api().getGroupRegistry().keys().size
-        }.getOrDefault(0)
+        return readMetric { it.getGroupRegistry().keys().size }
     }
 
     fun scriptCacheSize(): Int {
-        return runCatching {
-            Baikiruto.api().getScriptHandler().cacheStats().cacheSize
-        }.getOrDefault(0)
+        return readMetric { it.getScriptHandler().cacheStats().cacheSize }
+    }
+
+    private inline fun readMetric(block: (org.tabooproject.baikiruto.core.BaikirutoAPI) -> Int): Int {
+        val api = Baikiruto.apiOrNull() ?: return 0
+        return block(api)
     }
 
     private fun toChartValue(value: Long): Int {

@@ -21,7 +21,7 @@ object BaikirutoPerformanceReporter {
         }
         task?.cancel()
         task = submit(period = 20L * 60L) {
-            val cache = runCatching { Baikiruto.api().getScriptHandler().cacheStats() }.getOrNull()
+            val cache = Baikiruto.apiOrNull()?.getScriptHandler()?.cacheStats()
             val rate = cache?.hitRate()?.times(100.0)?.let { "%.2f".format(it) } ?: "0.00"
             console().sendLang(
                 "log-perf-report",

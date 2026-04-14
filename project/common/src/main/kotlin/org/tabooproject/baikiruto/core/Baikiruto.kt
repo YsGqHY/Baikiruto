@@ -11,8 +11,16 @@ object Baikiruto {
 
     private var api: BaikirutoAPI? = null
 
+    fun apiOrNull(): BaikirutoAPI? {
+        return api
+    }
+
+    fun isRegistered(): Boolean {
+        return api != null
+    }
+
     fun api(): BaikirutoAPI {
-        return api ?: error("BaikirutoAPI has not finished loading, or failed to load!")
+        return apiOrNull() ?: error("BaikirutoAPI has not finished loading, or failed to load!")
     }
 
     fun register(api: BaikirutoAPI) {

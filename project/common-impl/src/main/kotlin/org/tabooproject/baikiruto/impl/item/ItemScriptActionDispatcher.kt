@@ -90,8 +90,7 @@ object ItemScriptActionDispatcher {
             return normalizeLocale(direct)
         }
         val player = context["player"] as? Player ?: context["sender"] as? Player ?: return null
-        val locale = runCatching { player.locale }.getOrNull()
-        return normalizeLocale(locale)
+        return normalizeLocale(player.localeOrNull())
     }
 
     private fun normalizeLocale(value: String?): String? {
