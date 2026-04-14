@@ -586,15 +586,7 @@ abstract class BaseItemMetaVersionAdapter {
             !url.isNullOrBlank() -> encodeSkullUrl(url)
             else -> null
         } ?: return
-        val profile = createGameProfile(textureValue, signature) ?: return
-
-        val setProfile = itemMeta.javaClass.methods.firstOrNull { method ->
-            method.name == "setProfile" && method.parameterCount == 1
-        }
-        if (setProfile != null && invokeWithReflexSucceeded(itemMeta, setProfile, profile)) {
-            return
-        }
-        runCatching { itemMeta.setProperty("profile", profile) }
+        applyCompatibleSkullProfile(itemMeta, textureValue, signature)
     }
 
     protected open fun applySpawnerType(itemMeta: ItemMeta, entityName: String) {
@@ -914,6 +906,125 @@ abstract class BaseItemMetaVersionAdapter {
             "{\"textures\":{\"SKIN\":{\"url\":\"${raw.trim()}\"}}}"
         }
         return Base64.getEncoder().encodeToString(payload.toByteArray(Charsets.UTF_8))
+    }
+
+    private fun applyCompatibleSkullProfile(itemMeta: ItemMeta, texture: String, signature: String?): Boolean {
+        val gameProfile = createGameProfile(texture, signature) ?: return false
+        createBukkitPlayerProfile(itemMeta, gameProfile)?.let { profile ->
+            if (applySkullProfileValue(itemMeta, profile)) {
+                return true
+            }
+        }
+        createResolvableProfile(itemMeta, gameProfile)?.let { profile ->
+            if (applySkullProfileValue(itemMeta, profile)) {
+                return true
+            }
+        }
+        return applySkullProfileValue(itemMeta, gameProfile)
+    }
+
+    private fun createBukkitPlayerProfile(itemMeta: ItemMeta, gameProfile: Any): Any? {
+        val candidateNames = linkedSetOf<String>()
+        itemMeta.javaClass.getPackage()?.name
+            ?.substringBeforeLast(".inventory", missingDelimiterValue = "")
+            ?.takeIf { it.startsWith("org.bukkit.craftbukkit") }
+            ?.let { candidateNames += "$it.profile.CraftPlayerProfile" }
+        runCatching { Bukkit.getServer() }
+            .getOrNull()
+            ?.javaClass
+            ?.getPackage()
+            ?.name
+            ?.takeIf { it.startsWith("org.bukkit.craftbukkit") }
+            ?.let { candidateNames += "$it.profile.CraftPlayerProfile" }
+        candidateNames += "org.bukkit.craftbukkit.profile.CraftPlayerProfile"
+        candidateNames.forEach { className ->
+            val clazz = resolveClass(className) ?: return@forEach
+            val constructor = clazz.constructors.firstOrNull { ctor ->
+                ctor.parameterCount == 1 && ctor.parameterTypes[0].isAssignableFrom(gameProfile.javaClass)
+            } ?: return@forEach
+            invokeConstructorWithReflex(constructor, gameProfile)?.let { return it }
+        }
+        return null
+    }
+
+    private fun createResolvableProfile(itemMeta: ItemMeta, gameProfile: Any): Any? {
+        createBukkitPlayerProfile(itemMeta, gameProfile)?.let { profile ->
+            val buildResolvableProfile = profile.javaClass.methods.firstOrNull { method ->
+                method.name == "buildResolvableProfile" && method.parameterCount == 0
+            }
+            if (buildResolvableProfile != null) {
+                invokeWithReflex(profile, buildResolvableProfile)?.let { return it }
+            }
+        }
+        val resolvableProfileClass = resolveClass("net.minecraft.world.item.component.ResolvableProfile") ?: return null
+        val factory = resolvableProfileClass.methods
+            .filter { method ->
+                java.lang.reflect.Modifier.isStatic(method.modifiers) &&
+                    method.parameterCount == 1 &&
+                    method.parameterTypes[0].isAssignableFrom(gameProfile.javaClass)
+            }
+            .sortedBy { method ->
+                when (method.name) {
+                    "createResolved" -> 0
+                    "a" -> 1
+                    else -> 2
+                }
+            }
+            .firstOrNull()
+            ?: return null
+        return invokeStaticWithReflex(resolvableProfileClass, factory, gameProfile)
+    }
+
+    private fun applySkullProfileValue(itemMeta: ItemMeta, profile: Any): Boolean {
+        val setters = itemMeta.javaClass.methods
+            .filter { method ->
+                method.parameterCount == 1 &&
+                    method.name in setOf("setOwnerProfile", "setPlayerProfile", "setProfile") &&
+                    method.parameterTypes[0].isAssignableFrom(profile.javaClass)
+            }
+            .sortedBy { method ->
+                when (method.name) {
+                    "setOwnerProfile" -> 0
+                    "setPlayerProfile" -> 1
+                    "setProfile" -> 2
+                    else -> 3
+                }
+            }
+        setters.forEach { method ->
+            if (invokeWithReflexSucceeded(itemMeta, method, profile)) {
+                return true
+            }
+        }
+        collectSkullProfileFields(itemMeta.javaClass).forEach { field ->
+            if (!field.type.isAssignableFrom(profile.javaClass)) {
+                return@forEach
+            }
+            if (runCatching {
+                    field.isAccessible = true
+                    field.set(itemMeta, profile)
+                    true
+                }.getOrDefault(false)
+            ) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun collectSkullProfileFields(type: Class<*>): List<java.lang.reflect.Field> {
+        val fields = ArrayList<java.lang.reflect.Field>()
+        var current: Class<*>? = type
+        while (current != null && current != Any::class.java) {
+            current.declaredFields
+                .filter { field ->
+                    field.name.contains("profile", ignoreCase = true) ||
+                        field.name == "ownerProfile" ||
+                        field.name == "playerProfile"
+                }
+                .forEach(fields::add)
+            current = current.superclass
+        }
+        return fields.distinctBy { field -> field.name }
     }
 
     private fun createGameProfile(texture: String, signature: String?): Any? {
