@@ -227,6 +227,7 @@ class DefaultItemStream(
         )
         VersionAdapterService.applyVersionEffects(backingItem, runtimeDataBacking)
         ItemNativeFeature.apply(backingItem, runtimeDataBacking)
+        HeadDatabaseHook.applyHeadProfile(backingItem, runtimeDataBacking)
         val finalEvent = ItemReleaseFinalEvent(
             stream = this,
             player = player,
