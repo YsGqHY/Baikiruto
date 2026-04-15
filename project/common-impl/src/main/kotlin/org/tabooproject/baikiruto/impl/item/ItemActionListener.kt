@@ -82,12 +82,32 @@ import taboolib.platform.util.sendLang
 
 object ItemActionListener {
 
-    @Schedule(period = 100)
+    private var asyncTickClock = 0L
+
+    @Schedule(period = 1)
     fun onAsyncTick() {
+        asyncTickClock += 1L
+        if (!BaikirutoSettings.asyncTickEnabled) {
+            return
+        }
+        val currentTick = asyncTickClock
         Bukkit.getOnlinePlayers().forEach { player ->
             player.inventory.contents.forEachIndexed { index, itemStack ->
                 val managed = resolve(itemStack) ?: return@forEachIndexed
-                val outcome = dispatch(managed, listOf(ItemScriptTrigger.ASYNC_TICK), player, null)
+                val slot = resolveAsyncTickSlot(player, index)
+                if (!shouldDispatchAsyncTick(managed, player, slot, index, currentTick)) {
+                    return@forEachIndexed
+                }
+                val outcome = dispatch(
+                    managed = managed,
+                    triggers = listOf(ItemScriptTrigger.ASYNC_TICK),
+                    player = player,
+                    event = null,
+                    contextSeed = linkedMapOf(
+                        "slot" to slot,
+                        "slot_index" to index
+                    )
+                )
                 if (outcome.changed) {
                     player.inventory.setItem(index, managed.stream.toItemStack())
                 }
@@ -787,6 +807,91 @@ object ItemActionListener {
         val stream = Baikiruto.api().readItem(itemStack) ?: return null
         val item = Baikiruto.api().getItem(stream.itemId) ?: return null
         return ManagedItem(item, stream)
+    }
+
+    private fun shouldDispatchAsyncTick(managed: ManagedItem, player: Player, slot: String, slotIndex: Int, currentTick: Long): Boolean {
+        if (!ItemAsyncTickPolicy.resolveEnabled(managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_ENABLED))) {
+            return false
+        }
+        val baseContext = linkedMapOf<String, Any?>(
+            "player" to player,
+            "sender" to player,
+            "event" to null,
+            "slot" to slot,
+            "slot_index" to slotIndex
+        )
+        if (!ItemScriptActionDispatcher.hasAction(managed.item, ItemScriptTrigger.ASYNC_TICK, baseContext)) {
+            return false
+        }
+        val conditionState = resolveAsyncTickConditionState(player, slot)
+        if (!ItemAsyncTickPolicy.matchesConditions(
+                conditions = mapOf(
+                    ItemAsyncTickPolicy.KEY_CONDITION_SNEAKING to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_SNEAKING),
+                    ItemAsyncTickPolicy.KEY_CONDITION_SPRINTING to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_SPRINTING),
+                    ItemAsyncTickPolicy.KEY_CONDITION_SWIMMING to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_SWIMMING),
+                    ItemAsyncTickPolicy.KEY_CONDITION_GLIDING to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_GLIDING),
+                    ItemAsyncTickPolicy.KEY_CONDITION_FLYING to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_FLYING),
+                    ItemAsyncTickPolicy.KEY_CONDITION_ON_GROUND to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_ON_GROUND),
+                    ItemAsyncTickPolicy.KEY_CONDITION_IN_VEHICLE to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_IN_VEHICLE),
+                    ItemAsyncTickPolicy.KEY_CONDITION_BURNING to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_BURNING),
+                    ItemAsyncTickPolicy.KEY_CONDITION_BLOCKING to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_BLOCKING),
+                    ItemAsyncTickPolicy.KEY_CONDITION_SLOTS to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_SLOTS),
+                    ItemAsyncTickPolicy.KEY_CONDITION_WORLDS to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_WORLDS),
+                    ItemAsyncTickPolicy.KEY_CONDITION_GAME_MODES to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_GAME_MODES),
+                    ItemAsyncTickPolicy.KEY_CONDITION_PERMISSIONS to managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_CONDITION_PERMISSIONS)
+                ),
+                state = conditionState
+            )
+        ) {
+            return false
+        }
+        val interval = ItemAsyncTickPolicy.resolveInterval(
+            BaikirutoSettings.asyncTickDefaultInterval,
+            managed.stream.getRuntimeData(ItemAsyncTickPolicy.KEY_INTERVAL)
+        )
+        val seed = ItemAsyncTickPolicy.stableSeed(player.uniqueId.toString(), slotIndex, managed.item.id)
+        return ItemAsyncTickPolicy.shouldTrigger(currentTick, interval, seed)
+    }
+
+    private fun resolveAsyncTickSlot(player: Player, slotIndex: Int): String {
+        return when {
+            slotIndex == player.inventory.heldItemSlot -> "MAINHAND"
+            slotIndex in 0..8 -> "HOTBAR"
+            slotIndex in 9..35 -> "INVENTORY"
+            slotIndex == 36 -> "FEET"
+            slotIndex == 37 -> "LEGS"
+            slotIndex == 38 -> "CHEST"
+            slotIndex == 39 -> "HEAD"
+            slotIndex == 40 -> "OFFHAND"
+            else -> "INVENTORY"
+        }
+    }
+
+    private fun resolveAsyncTickConditionState(player: Player, slot: String): ItemAsyncTickPolicy.ConditionState {
+        return ItemAsyncTickPolicy.ConditionState(
+            slot = slot,
+            sneaking = player.isSneaking,
+            sprinting = player.isSprinting,
+            swimming = readPlayerBoolean(player, "isSwimming"),
+            gliding = readPlayerBoolean(player, "isGliding"),
+            flying = player.isFlying,
+            onGround = readPlayerBoolean(player, "isOnGround"),
+            inVehicle = player.isInsideVehicle,
+            burning = player.fireTicks > 0,
+            blocking = readPlayerBoolean(player, "isBlocking"),
+            world = player.world.name,
+            gameMode = player.gameMode.name,
+            hasPermission = { permission -> player.hasPermission(permission) }
+        )
+    }
+
+    private fun readPlayerBoolean(player: Player, methodName: String): Boolean {
+        return runCatching {
+            val method = player.javaClass.methods.firstOrNull { candidate ->
+                candidate.name == methodName && candidate.parameterCount == 0
+            } ?: return@runCatching false
+            method.invoke(player) as? Boolean ?: false
+        }.getOrDefault(false)
     }
 
     private fun dispatch(

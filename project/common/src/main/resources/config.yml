@@ -36,6 +36,14 @@ operations:
     # Automatically check/update online players' inventories after item reload.
     enabled: true
 
+  async-tick:
+    # Enable the periodic ASYNC_TICK trigger scanner.
+    enabled: true
+
+    # Default interval for ASYNC_TICK in server ticks.
+    # Items can override this via meta.async-tick.interval.
+    default-interval: 100
+
   performance-log:
     # Enable periodic performance and cache metric output.
     enabled: true

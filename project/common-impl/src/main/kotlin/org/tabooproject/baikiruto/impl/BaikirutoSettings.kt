@@ -73,6 +73,12 @@ object BaikirutoSettings {
     @ConfigNode("operations.reload-online-update.enabled")
     var reloadOnlineUpdateEnabled = true
 
+    @ConfigNode("operations.async-tick.enabled")
+    var asyncTickEnabled = true
+
+    @ConfigNode("operations.async-tick.default-interval")
+    var asyncTickDefaultInterval = 100L
+
     @ConfigNode("operations.performance-log.enabled")
     var performanceLogEnabled = true
 

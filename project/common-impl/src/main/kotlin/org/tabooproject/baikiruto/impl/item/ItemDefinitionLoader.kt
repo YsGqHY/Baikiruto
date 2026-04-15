@@ -1311,6 +1311,9 @@ object ItemDefinitionLoader {
         parseUnique(section).forEach { (key, value) ->
             effects[key] = value
         }
+        parseAsyncTick(section).forEach { (key, value) ->
+            effects[key] = value
+        }
 
         val durability = section.getConfigurationSection("durability")
         if (durability != null) {
@@ -1434,6 +1437,9 @@ object ItemDefinitionLoader {
             effects["native"] = it
         }
         parseUnique(section).forEach { (key, value) ->
+            effects[key] = value
+        }
+        parseAsyncTick(section).forEach { (key, value) ->
             effects[key] = value
         }
 
@@ -1907,6 +1913,244 @@ object ItemDefinitionLoader {
         }
         val enabled = asBoolean(section["unique"]) ?: false
         return mapOf("unique-enabled" to enabled)
+    }
+
+    private fun parseAsyncTick(section: ConfigurationSection): Map<String, Any?> {
+        val asyncTickSection = section.getConfigurationSection("async-tick")
+        if (asyncTickSection != null) {
+            val enabled = asyncTickSection.getBoolean("enabled", true)
+            val effects = linkedMapOf<String, Any?>(ItemAsyncTickPolicy.KEY_ENABLED to enabled)
+            if (!enabled) {
+                return effects
+            }
+            val interval = when {
+                asyncTickSection.contains("interval") -> asyncTickSection.getLong("interval")
+                asyncTickSection.contains("ticks") -> asyncTickSection.getLong("ticks")
+                asyncTickSection.contains("period") -> asyncTickSection.getLong("period")
+                else -> 0L
+            }
+            if (interval > 0L) {
+                effects[ItemAsyncTickPolicy.KEY_INTERVAL] = interval
+            }
+            parseAsyncTickConditions(asyncTickSection).forEach { (key, value) ->
+                effects[key] = value
+            }
+            asyncTickSection.getConfigurationSection("conditions")?.let { nested ->
+                parseAsyncTickConditions(nested).forEach { (key, value) ->
+                    effects[key] = value
+                }
+            }
+            return effects
+        }
+        if (!section.contains("async-tick")) {
+            return emptyMap()
+        }
+        val raw = section.get("async-tick")
+        val enabled = asBoolean(raw)
+        if (enabled != null) {
+            return mapOf(ItemAsyncTickPolicy.KEY_ENABLED to enabled)
+        }
+        val interval = when (raw) {
+            is Number -> raw.toLong()
+            is String -> raw.trim().toLongOrNull()
+            else -> null
+        }
+        return if (interval != null && interval > 0L) {
+            linkedMapOf(
+                ItemAsyncTickPolicy.KEY_ENABLED to true,
+                ItemAsyncTickPolicy.KEY_INTERVAL to interval
+            )
+        } else {
+            emptyMap()
+        }
+    }
+
+    private fun parseAsyncTick(section: Map<String, Any?>): Map<String, Any?> {
+        val asyncTickSection = anyToMap(section["async-tick"])
+        if (asyncTickSection.isNotEmpty()) {
+            val enabled = asBoolean(asyncTickSection["enabled"]) ?: true
+            val effects = linkedMapOf<String, Any?>(ItemAsyncTickPolicy.KEY_ENABLED to enabled)
+            if (!enabled) {
+                return effects
+            }
+            val interval = numberValue(asyncTickSection["interval"])
+                ?: numberValue(asyncTickSection["ticks"])
+                ?: numberValue(asyncTickSection["period"])
+            if (interval != null && interval.toLong() > 0L) {
+                effects[ItemAsyncTickPolicy.KEY_INTERVAL] = interval.toLong()
+            }
+            parseAsyncTickConditions(asyncTickSection).forEach { (key, value) ->
+                effects[key] = value
+            }
+            parseAsyncTickConditions(anyToMap(asyncTickSection["conditions"])).forEach { (key, value) ->
+                effects[key] = value
+            }
+            return effects
+        }
+        if (!section.containsKey("async-tick")) {
+            return emptyMap()
+        }
+        val raw = section["async-tick"]
+        val enabled = asBoolean(raw)
+        if (enabled != null) {
+            return mapOf(ItemAsyncTickPolicy.KEY_ENABLED to enabled)
+        }
+        val interval = numberValue(raw)?.toLong()
+            ?: stringValue(raw)?.toLongOrNull()
+        return if (interval != null && interval > 0L) {
+            linkedMapOf(
+                ItemAsyncTickPolicy.KEY_ENABLED to true,
+                ItemAsyncTickPolicy.KEY_INTERVAL to interval
+            )
+        } else {
+            emptyMap()
+        }
+    }
+
+    private data class AsyncTickBooleanCondition(
+        val runtimeKey: String,
+        val aliases: List<String>
+    )
+
+    private data class AsyncTickListCondition(
+        val runtimeKey: String,
+        val aliases: List<String>,
+        val normalizer: (String) -> String?
+    )
+
+    private val asyncTickBooleanConditions = listOf(
+        AsyncTickBooleanCondition(ItemAsyncTickPolicy.KEY_CONDITION_SNEAKING, listOf("sneaking", "sneak")),
+        AsyncTickBooleanCondition(ItemAsyncTickPolicy.KEY_CONDITION_SPRINTING, listOf("sprinting", "sprint")),
+        AsyncTickBooleanCondition(ItemAsyncTickPolicy.KEY_CONDITION_SWIMMING, listOf("swimming", "swim")),
+        AsyncTickBooleanCondition(ItemAsyncTickPolicy.KEY_CONDITION_GLIDING, listOf("gliding", "glide")),
+        AsyncTickBooleanCondition(ItemAsyncTickPolicy.KEY_CONDITION_FLYING, listOf("flying", "fly")),
+        AsyncTickBooleanCondition(ItemAsyncTickPolicy.KEY_CONDITION_ON_GROUND, listOf("on-ground", "on_ground", "onGround", "ground")),
+        AsyncTickBooleanCondition(ItemAsyncTickPolicy.KEY_CONDITION_IN_VEHICLE, listOf("in-vehicle", "in_vehicle", "inVehicle", "vehicle")),
+        AsyncTickBooleanCondition(ItemAsyncTickPolicy.KEY_CONDITION_BURNING, listOf("burning", "burn", "on-fire", "on_fire", "fire")),
+        AsyncTickBooleanCondition(ItemAsyncTickPolicy.KEY_CONDITION_BLOCKING, listOf("blocking", "block"))
+    )
+
+    private val asyncTickListConditions = listOf(
+        AsyncTickListCondition(ItemAsyncTickPolicy.KEY_CONDITION_SLOTS, listOf("slot", "slots"), ItemAsyncTickPolicy::normalizeSlot),
+        AsyncTickListCondition(ItemAsyncTickPolicy.KEY_CONDITION_WORLDS, listOf("world", "worlds"), ItemAsyncTickPolicy::normalizeWorld),
+        AsyncTickListCondition(ItemAsyncTickPolicy.KEY_CONDITION_GAME_MODES, listOf("game-mode", "game-modes", "gamemode", "gamemodes"), ItemAsyncTickPolicy::normalizeGameMode),
+        AsyncTickListCondition(ItemAsyncTickPolicy.KEY_CONDITION_PERMISSIONS, listOf("permission", "permissions", "perm", "perms"), ItemAsyncTickPolicy::normalizePermission)
+    )
+
+    private fun parseAsyncTickConditions(section: ConfigurationSection): Map<String, Any?> {
+        val effects = linkedMapOf<String, Any?>()
+        asyncTickBooleanConditions.forEach { condition ->
+            val enabled = findAsyncTickConditionValues(section, condition.aliases)
+                .asSequence()
+                .mapNotNull(::asBoolean)
+                .firstOrNull()
+            if (enabled != null) {
+                effects[condition.runtimeKey] = enabled
+            }
+        }
+        asyncTickListConditions.forEach { condition ->
+            val values = linkedSetOf<String>()
+            findAsyncTickConditionValues(section, condition.aliases)
+                .flatMap { source -> parseAsyncTickStrings(source, condition.normalizer) }
+                .forEach(values::add)
+            if (values.isNotEmpty()) {
+                effects[condition.runtimeKey] = values.toList()
+            }
+        }
+        return effects
+    }
+
+    private fun parseAsyncTickConditions(section: Map<String, Any?>): Map<String, Any?> {
+        val effects = linkedMapOf<String, Any?>()
+        asyncTickBooleanConditions.forEach { condition ->
+            val enabled = findAsyncTickConditionValues(section, condition.aliases)
+                .asSequence()
+                .mapNotNull(::asBoolean)
+                .firstOrNull()
+            if (enabled != null) {
+                effects[condition.runtimeKey] = enabled
+            }
+        }
+        asyncTickListConditions.forEach { condition ->
+            val values = linkedSetOf<String>()
+            findAsyncTickConditionValues(section, condition.aliases)
+                .flatMap { source -> parseAsyncTickStrings(source, condition.normalizer) }
+                .forEach(values::add)
+            if (values.isNotEmpty()) {
+                effects[condition.runtimeKey] = values.toList()
+            }
+        }
+        return effects
+    }
+
+    private fun findAsyncTickConditionValues(section: ConfigurationSection, aliases: List<String>): List<Any?> {
+        val values = mutableListOf<Any?>()
+        val consumed = mutableSetOf<String>()
+        aliases.forEach { alias ->
+            if (section.contains(alias)) {
+                values += section.get(alias)
+                consumed += normalizeAsyncTickConditionAlias(alias)
+            }
+        }
+        val normalizedAliases = aliases.mapTo(mutableSetOf(), ::normalizeAsyncTickConditionAlias)
+        section.getKeys(false).forEach { key ->
+            val normalized = normalizeAsyncTickConditionAlias(key)
+            if (normalized in normalizedAliases && normalized !in consumed) {
+                values += section.get(key)
+                consumed += normalized
+            }
+        }
+        return values
+    }
+
+    private fun findAsyncTickConditionValues(section: Map<String, Any?>, aliases: List<String>): List<Any?> {
+        val values = mutableListOf<Any?>()
+        val consumed = mutableSetOf<String>()
+        aliases.forEach { alias ->
+            if (section.containsKey(alias)) {
+                values += section[alias]
+                consumed += normalizeAsyncTickConditionAlias(alias)
+            }
+        }
+        val normalizedAliases = aliases.mapTo(mutableSetOf(), ::normalizeAsyncTickConditionAlias)
+        section.forEach { (key, value) ->
+            val normalized = normalizeAsyncTickConditionAlias(key)
+            if (normalized in normalizedAliases && normalized !in consumed) {
+                values += value
+                consumed += normalized
+            }
+        }
+        return values
+    }
+
+    private fun normalizeAsyncTickConditionAlias(raw: String): String {
+        return raw.trim()
+            .lowercase(Locale.ENGLISH)
+            .replace("-", "")
+            .replace("_", "")
+    }
+
+    private fun parseAsyncTickStrings(source: Any?, normalizer: (String) -> String?): List<String> {
+        val values = linkedSetOf<String>()
+        when (source) {
+            null -> Unit
+            is String -> addAsyncTickStringValues(values, source, normalizer)
+            is Iterable<*> -> source.forEach { entry ->
+                when (entry) {
+                    null -> Unit
+                    is String -> addAsyncTickStringValues(values, entry, normalizer)
+                    else -> entry.toString().let(normalizer)?.let(values::add)
+                }
+            }
+            else -> source.toString().let(normalizer)?.let(values::add)
+        }
+        return values.toList()
+    }
+
+    private fun addAsyncTickStringValues(values: MutableSet<String>, source: String, normalizer: (String) -> String?) {
+        source.split(',', '\n')
+            .mapNotNull(normalizer)
+            .forEach(values::add)
     }
 
     private fun normalizeAttributeName(raw: String): String {

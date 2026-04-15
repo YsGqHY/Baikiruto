@@ -238,6 +238,98 @@ class ItemDefinitionLoaderCompatibilityTest {
     }
 
     @Test
+    fun `should parse async tick meta interval and enabled flag`() {
+        val parsed = invokeMapMethod(
+            "parseMetaEffects",
+            mapOf(
+                "async-tick" to mapOf(
+                    "enabled" to true,
+                    "interval" to 1
+                )
+            )
+        )
+
+        assertEquals(true, parsed[ItemAsyncTickPolicy.KEY_ENABLED])
+        assertEquals(1L, parsed[ItemAsyncTickPolicy.KEY_INTERVAL])
+    }
+
+    @Test
+    fun `should allow disabling async tick meta`() {
+        val parsed = invokeMapMethod(
+            "parseMetaEffects",
+            mapOf(
+                "async-tick" to mapOf(
+                    "enabled" to false,
+                    "interval" to 1
+                )
+            )
+        )
+
+        assertEquals(false, parsed[ItemAsyncTickPolicy.KEY_ENABLED])
+        assertTrue(ItemAsyncTickPolicy.KEY_INTERVAL !in parsed)
+    }
+
+    @Test
+    fun `should parse async tick conditions from nested config`() {
+        val parsed = invokeMapMethod(
+            "parseMetaEffects",
+            mapOf(
+                "async-tick" to mapOf(
+                    "interval" to 1,
+                    "conditions" to mapOf(
+                        "sneaking" to true,
+                        "sprinting" to true,
+                        "swimming" to false,
+                        "on-ground" to true,
+                        "in-vehicle" to false,
+                        "worlds" to "world, world_nether",
+                        "game-mode" to "survival",
+                        "permissions" to listOf("baikiruto.async.fire", "baikiruto.async.admin"),
+                        "slots" to listOf("mainhand", "offhand")
+                    )
+                )
+            )
+        )
+
+        assertEquals(true, parsed[ItemAsyncTickPolicy.KEY_CONDITION_SNEAKING])
+        assertEquals(true, parsed[ItemAsyncTickPolicy.KEY_CONDITION_SPRINTING])
+        assertEquals(false, parsed[ItemAsyncTickPolicy.KEY_CONDITION_SWIMMING])
+        assertEquals(true, parsed[ItemAsyncTickPolicy.KEY_CONDITION_ON_GROUND])
+        assertEquals(false, parsed[ItemAsyncTickPolicy.KEY_CONDITION_IN_VEHICLE])
+        assertEquals(listOf("world", "world_nether"), parsed[ItemAsyncTickPolicy.KEY_CONDITION_WORLDS])
+        assertEquals(listOf("SURVIVAL"), parsed[ItemAsyncTickPolicy.KEY_CONDITION_GAME_MODES])
+        assertEquals(listOf("baikiruto.async.fire", "baikiruto.async.admin"), parsed[ItemAsyncTickPolicy.KEY_CONDITION_PERMISSIONS])
+        assertEquals(listOf("MAINHAND", "OFFHAND"), parsed[ItemAsyncTickPolicy.KEY_CONDITION_SLOTS])
+    }
+
+    @Test
+    fun `should parse async tick conditions from flat config`() {
+        val parsed = invokeMapMethod(
+            "parseMetaEffects",
+            mapOf(
+                "async-tick" to mapOf(
+                    "interval" to 1,
+                    "sneaking" to false,
+                    "fly" to false,
+                    "vehicle" to false,
+                    "world" to listOf("world"),
+                    "gamemodes" to "creative, adventure",
+                    "perm" to "baikiruto.async.fire",
+                    "slot" to "hotbar"
+                )
+            )
+        )
+
+        assertEquals(false, parsed[ItemAsyncTickPolicy.KEY_CONDITION_SNEAKING])
+        assertEquals(false, parsed[ItemAsyncTickPolicy.KEY_CONDITION_FLYING])
+        assertEquals(false, parsed[ItemAsyncTickPolicy.KEY_CONDITION_IN_VEHICLE])
+        assertEquals(listOf("world"), parsed[ItemAsyncTickPolicy.KEY_CONDITION_WORLDS])
+        assertEquals(listOf("CREATIVE", "ADVENTURE"), parsed[ItemAsyncTickPolicy.KEY_CONDITION_GAME_MODES])
+        assertEquals(listOf("baikiruto.async.fire"), parsed[ItemAsyncTickPolicy.KEY_CONDITION_PERMISSIONS])
+        assertEquals(listOf("HOTBAR"), parsed[ItemAsyncTickPolicy.KEY_CONDITION_SLOTS])
+    }
+
+    @Test
     fun `should keep legacy color code when wrapping lore`() {
         val ampersand = invokeListMethod("wrapLine", "&6abcdef", 4)
         val section = invokeListMethod("wrapLine", "§6abcdef", 4)
