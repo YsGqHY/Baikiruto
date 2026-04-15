@@ -1,7 +1,10 @@
 package org.tabooproject.baikiruto.core.version
 
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import org.bukkit.inventory.ItemStack
-import org.tabooproject.baikiruto.core.ClassAccess
 import taboolib.common.platform.function.warning
 import java.util.Locale
 
@@ -12,54 +15,10 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
 
     private val componentWrapper: ThreadLocal<ComponentItemWrapper?> = ThreadLocal.withInitial { null }
 
-    private fun <T> reflectOrNull(block: () -> T): T? {
-        return try {
-            block()
-        } catch (_: ReflectiveOperationException) {
-            null
-        } catch (_: IllegalArgumentException) {
-            null
-        } catch (_: IllegalStateException) {
-            null
-        } catch (_: SecurityException) {
-            null
-        } catch (_: UnsupportedOperationException) {
-            null
-        } catch (_: NoClassDefFoundError) {
-            null
-        } catch (_: LinkageError) {
-            null
-        }
-    }
-
-    private fun invokeCompatibleSetter(target: Any, methodName: String, value: Any): Boolean {
-        val method = target.javaClass.methods.firstOrNull { candidate ->
-            candidate.name == methodName &&
-                candidate.parameterCount == 1 &&
-                candidate.parameterTypes[0].isAssignableFrom(value.javaClass)
-        } ?: return false
-        return reflectOrNull {
-            method.invoke(target, value)
-            true
-        } == true
-    }
-
     override fun applyDisplayName(itemStack: ItemStack, displayName: String?) {
         if (displayName.isNullOrBlank()) {
             return
         }
-
-        if (trySetComponentDisplayName(itemStack, displayName)) {
-            return
-        }
-
-        val itemMeta = itemStack.itemMeta ?: return
-        val component = createLegacyTextComponent(displayName)
-        if (component != null && invokeCompatibleSetter(itemMeta, "setItemName", component)) {
-            itemStack.itemMeta = itemMeta
-            return
-        }
-
         super.applyDisplayName(itemStack, displayName)
     }
 
@@ -67,18 +26,6 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         if (lore.isEmpty()) {
             return
         }
-
-        if (trySetComponentLore(itemStack, lore)) {
-            return
-        }
-
-        val itemMeta = itemStack.itemMeta ?: return
-        val components = lore.mapNotNull { createLegacyTextComponent(it) }
-        if (components.size == lore.size && invokeCompatibleSetter(itemMeta, "setLore", components)) {
-            itemStack.itemMeta = itemMeta
-            return
-        }
-
         super.applyLore(itemStack, lore)
     }
 
@@ -94,6 +41,9 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         componentsData.forEach { (key, value) ->
             if (key == null || value == null) return@forEach
             val componentKey = canonicalComponentKey(key.toString()) ?: return@forEach
+            if (shouldPreserveLegacyDisplay(runtimeData, componentKey)) {
+                return@forEach
+            }
 
             try {
                 when (componentKey) {
@@ -128,6 +78,9 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
             throw lastError as Exception
         }
     }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun shouldPreserveLegacyDisplay(runtimeData: Map<String, Any?>, componentKey: String): Boolean = false
 
     private fun applyCustomData(wrapper: ComponentItemWrapper, value: Any) {
         val source = value as? Map<*, *> ?: return
@@ -192,6 +145,19 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
 
     private fun componentValueCandidates(componentKey: String, value: Any): List<Any> {
         return when (componentKey) {
+            "minecraft:custom_name",
+            "minecraft:item_name" -> {
+                val candidates = linkedSetOf<Any>()
+                normalizeTextComponent(value)?.let(candidates::add)
+                candidates += value
+                candidates.toList()
+            }
+            "minecraft:lore" -> {
+                val candidates = linkedSetOf<Any>()
+                normalizeLoreComponents(value)?.let(candidates::add)
+                candidates += value
+                candidates.toList()
+            }
             "minecraft:enchantments" -> {
                 listOfNotNull(normalizeEnchantments(value))
             }
@@ -219,6 +185,134 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
             }
             else -> listOf(value)
         }
+    }
+
+    private fun normalizeTextComponent(source: Any): Any? {
+        val text = source as? String ?: return null
+        parseJsonComponent(text)?.let { return it }
+        return legacyTextToJsonComponent(text)
+    }
+
+    private fun normalizeLoreComponents(source: Any): Any? {
+        return when (source) {
+            is String -> normalizeTextComponent(source)?.let { component ->
+                JsonArray().also { array -> array.add(component as JsonElement) }
+            }
+            is Iterable<*> -> {
+                val converted = JsonArray()
+                source.forEach { entry ->
+                    val line = entry as? String ?: return null
+                    val component = normalizeTextComponent(line) as? JsonElement ?: return null
+                    converted.add(component)
+                }
+                converted.takeIf { it.size() > 0 }
+            }
+            else -> null
+        }
+    }
+
+    private fun parseJsonComponent(source: String): JsonElement? {
+        val trimmed = source.trim()
+        if (!looksLikeJson(trimmed)) {
+            return null
+        }
+        return try {
+            JsonParser.parseString(trimmed)
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
+
+    private fun looksLikeJson(source: String): Boolean {
+        val trimmed = source.trim()
+        return (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+            (trimmed.startsWith("[") && trimmed.endsWith("]"))
+    }
+
+    private fun legacyTextToJsonComponent(source: String): JsonObject {
+        val root = JsonObject().apply {
+            addProperty("text", "")
+            addProperty("italic", false)
+        }
+        val extra = JsonArray()
+        var color: String? = null
+        val decorations = linkedMapOf(
+            "bold" to false,
+            "italic" to false,
+            "underlined" to false,
+            "strikethrough" to false,
+            "obfuscated" to false
+        )
+        val buffer = StringBuilder()
+        var index = 0
+        while (index < source.length) {
+            val current = source[index]
+            if ((current == '&' || current == '§') && index + 1 < source.length) {
+                val code = source[index + 1].lowercaseChar()
+                if (isLegacyStyleCode(code)) {
+                    flushTextSegment(buffer, extra, color, decorations)
+                    val nextColor = LEGACY_COLOR_NAMES[code]
+                    if (nextColor != null) {
+                        decorations.keys.forEach { key -> decorations[key] = false }
+                        color = nextColor
+                    } else {
+                        applyLegacyDecorationCode(code, decorations)
+                        if (code == 'r') {
+                            color = null
+                        }
+                    }
+                    index += 2
+                    continue
+                }
+            }
+            buffer.append(current)
+            index++
+        }
+        flushTextSegment(buffer, extra, color, decorations)
+        if (extra.size() == 1) {
+            return extra[0].asJsonObject
+        }
+        if (extra.size() > 0) {
+            root.add("extra", extra)
+        }
+        return root
+    }
+
+    private fun isLegacyStyleCode(code: Char): Boolean {
+        return code in LEGACY_COLOR_NAMES || code in LEGACY_DECORATION_CODES
+    }
+
+    private fun applyLegacyDecorationCode(code: Char, decorations: MutableMap<String, Boolean>) {
+        when (code) {
+            'k' -> decorations["obfuscated"] = true
+            'l' -> decorations["bold"] = true
+            'm' -> decorations["strikethrough"] = true
+            'n' -> decorations["underlined"] = true
+            'o' -> decorations["italic"] = true
+            'r' -> decorations.keys.forEach { key -> decorations[key] = false }
+        }
+    }
+
+    private fun flushTextSegment(
+        buffer: StringBuilder,
+        extra: JsonArray,
+        color: String?,
+        decorations: Map<String, Boolean>
+    ) {
+        if (buffer.isEmpty()) {
+            return
+        }
+        extra.add(JsonObject().apply {
+            addProperty("text", buffer.toString())
+            addProperty("italic", decorations["italic"] == true)
+            color?.let { addProperty("color", it) }
+            decorations.forEach { (key, enabled) ->
+                if (key != "italic" && enabled) {
+                    addProperty(key, true)
+                }
+            }
+        })
+        buffer.clear()
     }
 
     private fun normalizeCustomModelData(source: Any): Any? {
@@ -516,39 +610,6 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         return "minecraft:$canonical"
     }
 
-    private fun trySetComponentDisplayName(itemStack: ItemStack, displayName: String): Boolean {
-        val wrapper = try {
-            getOrCreateWrapper(itemStack)
-        } catch (_: Exception) {
-            return false
-        }
-        val component = createLegacyTextComponent(displayName) ?: return false
-        return try {
-            wrapper.setJavaComponent("minecraft:item_name", component)
-            true
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    private fun trySetComponentLore(itemStack: ItemStack, lore: List<String>): Boolean {
-        val wrapper = try {
-            getOrCreateWrapper(itemStack)
-        } catch (_: Exception) {
-            return false
-        }
-        val components = lore.mapNotNull { createLegacyTextComponent(it) }
-        if (components.size != lore.size) {
-            return false
-        }
-        return try {
-            wrapper.setJavaComponent("minecraft:lore", components)
-            true
-        } catch (_: Exception) {
-            false
-        }
-    }
-
     private fun getOrCreateWrapper(itemStack: ItemStack): ComponentItemWrapper {
         var wrapper = componentWrapper.get()
         if (wrapper == null || wrapper.getItemStack() !== itemStack) {
@@ -558,19 +619,27 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         return wrapper
     }
 
-    private fun createLegacyTextComponent(text: String): Any? {
-        val serializerClass = ClassAccess.resolveLazy(
-            "net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer"
-        ) ?: return null
-        val serializerReflex = reflectOrNull { taboolib.library.reflex.ReflexClass.of(serializerClass) } ?: return null
-        val legacyAmpersand = reflectOrNull {
-            serializerReflex.getMethodSilently("legacyAmpersand", true, true)?.invokeStatic()
-        } ?: return null
-        val deserialize = legacyAmpersand.javaClass.methods.firstOrNull { method ->
-            method.name == "deserialize" &&
-                method.parameterCount == 1 &&
-                method.parameterTypes[0].isAssignableFrom(String::class.java)
-        } ?: return null
-        return reflectOrNull { deserialize.invoke(legacyAmpersand, text) }
+    private companion object {
+
+        val LEGACY_DECORATION_CODES = setOf('k', 'l', 'm', 'n', 'o', 'r')
+
+        val LEGACY_COLOR_NAMES = mapOf(
+            '0' to "black",
+            '1' to "dark_blue",
+            '2' to "dark_green",
+            '3' to "dark_aqua",
+            '4' to "dark_red",
+            '5' to "dark_purple",
+            '6' to "gold",
+            '7' to "gray",
+            '8' to "dark_gray",
+            '9' to "blue",
+            'a' to "green",
+            'b' to "aqua",
+            'c' to "red",
+            'd' to "light_purple",
+            'e' to "yellow",
+            'f' to "white"
+        )
     }
 }

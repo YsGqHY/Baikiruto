@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 class ItemDefinitionLoaderCompatibilityTest {
 
     @Test
-    fun `should parse simplified custom name component`() {
+    fun `should keep simplified custom name only in high version components`() {
         val effects = invokeMapMethod(
             "parseComponents",
             mapOf(
@@ -24,12 +24,13 @@ class ItemDefinitionLoaderCompatibilityTest {
                 )
             )
         )
-        val name = effects["name"] as Map<*, *>
-        assertEquals("&6Example Tree", name["item_name"])
+        val components = effects["components"] as Map<*, *>
+        assertEquals(mapOf("text" to "Example Tree", "color" to "gold", "italic" to false), components["custom_name"])
+        assertTrue("name" !in effects)
     }
 
     @Test
-    fun `should parse component lore and strip minecraft prefix`() {
+    fun `should keep component lore only in high version components`() {
         val effects = invokeMapMethod(
             "parseComponents",
             mapOf(
@@ -41,10 +42,45 @@ class ItemDefinitionLoaderCompatibilityTest {
             )
         )
 
-        val lore = (effects["lore"] as Map<*, *>)["item_description"] as List<*>
-        assertEquals(listOf("&eLine 1", "&aLine 2"), lore)
+        val components = effects["components"] as Map<*, *>
+        assertEquals(
+            listOf(
+                """{"text":"Line 1","color":"yellow","italic":false}""",
+                "&aLine 2"
+            ),
+            components["lore"]
+        )
+        assertTrue("lore" !in effects)
         assertEquals(1001, effects["custom-model-data"])
     }
+
+    @Test
+    fun `should parse simplified high version custom name and lore strings`() {
+        val effects = invokeMapMethod(
+            "parseComponents",
+            mapOf(
+                "custom_name" to "&6Example All Features",
+                "lore" to listOf(
+                    "&71.21.11 data component showcase",
+                    "&8Includes script/meta/component pipeline"
+                )
+            )
+        )
+
+        val components = effects["components"] as Map<*, *>
+
+        assertTrue("name" !in effects)
+        assertTrue("lore" !in effects)
+        assertEquals("&6Example All Features", components["custom_name"])
+        assertEquals(
+            listOf(
+                "&71.21.11 data component showcase",
+                "&8Includes script/meta/component pipeline"
+            ),
+            components["lore"]
+        )
+    }
+
 
     @Test
     fun `should keep raw components for high version adapter`() {

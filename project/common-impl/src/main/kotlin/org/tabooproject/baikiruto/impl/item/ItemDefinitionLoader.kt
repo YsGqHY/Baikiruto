@@ -1113,14 +1113,10 @@ object ItemDefinitionLoader {
                     parseCustomModelData(rawValue)?.let { effects["custom-model-data"] = it }
                 }
                 "custom_name", "name" -> {
-                    parseComponentDisplayName(rawValue)?.let {
-                        effects["name"] = mapOf("item_name" to it)
-                    }
+                    // 高版本组件字段只保留到 components，避免回填到 legacy meta.name 并覆盖原始显示管线
                 }
                 "lore" -> {
-                    parseComponentLore(rawValue).takeIf { it.isNotEmpty() }?.let {
-                        effects["lore"] = mapOf("item_description" to it)
-                    }
+                    // 高版本组件字段只保留到 components，避免回填到 legacy meta.lore 并覆盖原始显示管线
                 }
                 "enchantments", "enchantment" -> {
                     parseComponentEnchantments(rawValue).forEach { (key, value) ->
