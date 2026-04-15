@@ -4,6 +4,7 @@ import me.arcaniax.hdb.api.DatabaseLoadEvent
 import me.arcaniax.hdb.api.HeadDatabaseAPI
 import org.bukkit.Bukkit
 import org.bukkit.inventory.ItemStack
+import org.tabooproject.baikiruto.core.ClassAccess
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
@@ -97,26 +98,18 @@ object HeadDatabaseHook {
         }
         return try {
             HeadDatabaseAPI()
-        } catch (_: Throwable) {
+        } catch (_: Exception) {
             null
         }
     }
 
     private fun isPluginEnabled(): Boolean {
-        return try {
-            Bukkit.getPluginManager().isPluginEnabled(HEAD_DATABASE_PLUGIN)
-        } catch (_: Throwable) {
-            false
-        }
+        val plugin = Bukkit.getPluginManager().getPlugin(HEAD_DATABASE_PLUGIN) ?: return false
+        return plugin.isEnabled
     }
 
     private fun isApiPresent(): Boolean {
-        return try {
-            Class.forName(HEAD_DATABASE_API_CLASS, false, javaClass.classLoader)
-            true
-        } catch (_: Throwable) {
-            false
-        }
+        return ClassAccess.isAvailable(HEAD_DATABASE_API_CLASS, javaClass.classLoader)
     }
 
     private fun normalizeHeadDatabaseId(raw: String): String {

@@ -11,17 +11,13 @@ internal object SkullProfileBridge {
             method.parameterCount == 0 && method.name in PROFILE_GETTER_NAMES
         }
         getters.forEach { getter ->
-            val profile = runCatching { getter.invoke(sourceMeta) }.getOrNull() ?: return@forEach
+            val profile = reflectOrNull { getter.invoke(sourceMeta) } ?: return@forEach
             val setter = targetMeta.javaClass.methods.firstOrNull { method ->
                 method.parameterCount == 1 &&
                     method.name in PROFILE_SETTER_NAMES &&
                     method.parameterTypes[0].isAssignableFrom(profile.javaClass)
             } ?: return@forEach
-            if (runCatching {
-                    setter.invoke(targetMeta, profile)
-                    true
-                }.getOrDefault(false)
-            ) {
+            if (reflectSucceeded { setter.invoke(targetMeta, profile) }) {
                 return true
             }
         }
@@ -34,20 +30,40 @@ internal object SkullProfileBridge {
             val targetField = collectProfileFields(targetMeta.javaClass).firstOrNull { candidate ->
                 candidate.name == sourceField.name && candidate.type.isAssignableFrom(sourceField.type)
             } ?: return@forEach
-            val value = runCatching {
+            val value = reflectOrNull {
                 sourceField.isAccessible = true
                 sourceField.get(sourceMeta)
-            }.getOrNull() ?: return@forEach
-            if (runCatching {
+            } ?: return@forEach
+            if (reflectSucceeded {
                     targetField.isAccessible = true
                     targetField.set(targetMeta, value)
-                    true
-                }.getOrDefault(false)
+                }
             ) {
                 copied = true
             }
         }
         return copied
+    }
+
+    private fun <T> reflectOrNull(block: () -> T): T? {
+        return try {
+            block()
+        } catch (_: ReflectiveOperationException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        } catch (_: IllegalStateException) {
+            null
+        } catch (_: SecurityException) {
+            null
+        }
+    }
+
+    private fun reflectSucceeded(block: () -> Unit): Boolean {
+        return reflectOrNull {
+            block()
+            true
+        } == true
     }
 
     private fun collectProfileFields(type: Class<*>): List<java.lang.reflect.Field> {

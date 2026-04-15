@@ -8,7 +8,6 @@ import taboolib.common.TabooLib
 import taboolib.common.platform.function.debug
 import taboolib.common.util.execution
 import taboolib.common.util.t
-import taboolib.library.reflex.Reflex.Companion.invokeMethod
 
 /**
  * Aiyatsbus
@@ -37,15 +36,11 @@ object AsmClassTranslation {
             )
         }
         val bytes = inputStream.readBytes()
-        // 转译
         val (newClass, cost2) = execution {
             val classReader = ClassReader(bytes)
             val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
-            // 创建带类名修改的 Remapper
             val renameRemapper = RelocateTranslation(PACKAGE_BEFORE, PACKAGE_AFTER, source.replace('.', '/'))
-            // 转译器
             classReader.accept(ClassRemapper(classWriter, renameRemapper), 0)
-            // 使用自定义 ClassLoader 定义类
             defineClass("${source}T", classWriter.toByteArray())
         }
         debug("[AsmClassTranslation] 转译 $source，用时 $cost2 毫秒。")
@@ -53,6 +48,23 @@ object AsmClassTranslation {
     }
 
     fun defineClass(name: String, bytes: ByteArray): Class<*> {
-        return Bukkit.getPluginManager().getPlugin("FluxonPlugin")!!.javaClass.classLoader.invokeMethod<Class<*>>("defineClass", name, bytes, 0, bytes.size)!!
+        val fluxonPlugin = Bukkit.getPluginManager().getPlugin("FluxonPlugin")
+            ?: error("FluxonPlugin 未加载，无法定义转译类：$name")
+        check(fluxonPlugin.isEnabled) { "FluxonPlugin 尚未启用，无法定义转译类：$name" }
+        val classLoader = fluxonPlugin.javaClass.classLoader
+        val defineClass = classLoader.javaClass.methods.firstOrNull { method ->
+            method.name == "defineClass" &&
+                method.parameterCount == 4 &&
+                method.parameterTypes[0] == String::class.java &&
+                method.parameterTypes[1] == ByteArray::class.java &&
+                method.parameterTypes[2] == Int::class.javaPrimitiveType &&
+                method.parameterTypes[3] == Int::class.javaPrimitiveType
+        } ?: error("FluxonPlugin ClassLoader 不支持 defineClass(String, ByteArray, Int, Int)")
+        return try {
+            defineClass.invoke(classLoader, name, bytes, 0, bytes.size) as? Class<*>
+                ?: error("FluxonPlugin ClassLoader#defineClass 返回空结果：$name")
+        } catch (ex: ReflectiveOperationException) {
+            throw IllegalStateException("调用 FluxonPlugin ClassLoader#defineClass 失败：$name", ex)
+        }
     }
 }

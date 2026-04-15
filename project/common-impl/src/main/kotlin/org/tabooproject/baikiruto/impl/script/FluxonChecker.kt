@@ -1,6 +1,7 @@
 package org.tabooproject.baikiruto.impl.script
 
 import org.bukkit.Bukkit
+import org.tabooproject.baikiruto.core.ClassAccess
 import org.tabooproject.baikiruto.impl.log.BaikirutoLog
 import taboolib.common.LifeCycle
 import taboolib.common.PrimitiveLoader
@@ -74,7 +75,7 @@ object FluxonChecker {
 
     @Awake(LifeCycle.CONST)
     fun download() {
-        if (Bukkit.getPluginManager().getPlugin("FluxonPlugin") != null) {
+        if (hasExternalFluxonPlugin()) {
             source = Source.EXTERNAL_PLUGIN
             return
         }
@@ -215,11 +216,13 @@ object FluxonChecker {
         return String(Base64.getDecoder().decode(value), Charsets.UTF_8)
     }
 
+    private fun hasExternalFluxonPlugin(): Boolean {
+        val plugin = Bukkit.getPluginManager().getPlugin("FluxonPlugin") ?: return false
+        return plugin.isEnabled
+    }
+
     private fun isClassAvailable(name: String): Boolean {
-        return runCatching {
-            Class.forName(name, false, javaClass.classLoader)
-            true
-        }.getOrDefault(false)
+        return ClassAccess.isAvailable(name, javaClass.classLoader)
     }
 
     @Awake(LifeCycle.INIT)
