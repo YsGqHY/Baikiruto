@@ -1,10 +1,8 @@
 package org.tabooproject.baikiruto.core.version
 
 import org.bukkit.inventory.ItemStack
+import org.tabooproject.baikiruto.core.ClassAccess
 import taboolib.common.platform.function.warning
-import taboolib.library.reflex.LazyClass
-import taboolib.library.reflex.Reflex.Companion.invokeMethod
-import taboolib.library.reflex.ReflexClass
 import java.util.Locale
 
 /**
@@ -13,6 +11,38 @@ import java.util.Locale
 open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
 
     private val componentWrapper: ThreadLocal<ComponentItemWrapper?> = ThreadLocal.withInitial { null }
+
+    private fun <T> reflectOrNull(block: () -> T): T? {
+        return try {
+            block()
+        } catch (_: ReflectiveOperationException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        } catch (_: IllegalStateException) {
+            null
+        } catch (_: SecurityException) {
+            null
+        } catch (_: UnsupportedOperationException) {
+            null
+        } catch (_: NoClassDefFoundError) {
+            null
+        } catch (_: LinkageError) {
+            null
+        }
+    }
+
+    private fun invokeCompatibleSetter(target: Any, methodName: String, value: Any): Boolean {
+        val method = target.javaClass.methods.firstOrNull { candidate ->
+            candidate.name == methodName &&
+                candidate.parameterCount == 1 &&
+                candidate.parameterTypes[0].isAssignableFrom(value.javaClass)
+        } ?: return false
+        return reflectOrNull {
+            method.invoke(target, value)
+            true
+        } == true
+    }
 
     override fun applyDisplayName(itemStack: ItemStack, displayName: String?) {
         if (displayName.isNullOrBlank()) {
@@ -25,7 +55,7 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
 
         val itemMeta = itemStack.itemMeta ?: return
         val component = createLegacyTextComponent(displayName)
-        if (component != null && runCatching { itemMeta.invokeMethod<Any?>("setItemName", component) }.isSuccess) {
+        if (component != null && invokeCompatibleSetter(itemMeta, "setItemName", component)) {
             itemStack.itemMeta = itemMeta
             return
         }
@@ -44,7 +74,7 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
 
         val itemMeta = itemStack.itemMeta ?: return
         val components = lore.mapNotNull { createLegacyTextComponent(it) }
-        if (components.size == lore.size && runCatching { itemMeta.invokeMethod<Any?>("setLore", components) }.isSuccess) {
+        if (components.size == lore.size && invokeCompatibleSetter(itemMeta, "setLore", components)) {
             itemStack.itemMeta = itemMeta
             return
         }
@@ -487,22 +517,36 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
     }
 
     private fun trySetComponentDisplayName(itemStack: ItemStack, displayName: String): Boolean {
-        return runCatching {
-            val wrapper = getOrCreateWrapper(itemStack)
-            val component = createLegacyTextComponent(displayName) ?: return false
+        val wrapper = try {
+            getOrCreateWrapper(itemStack)
+        } catch (_: Exception) {
+            return false
+        }
+        val component = createLegacyTextComponent(displayName) ?: return false
+        return try {
             wrapper.setJavaComponent("minecraft:item_name", component)
             true
-        }.getOrElse { false }
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun trySetComponentLore(itemStack: ItemStack, lore: List<String>): Boolean {
-        return runCatching {
-            val wrapper = getOrCreateWrapper(itemStack)
-            val components = lore.mapNotNull { createLegacyTextComponent(it) }
-            if (components.size != lore.size) return false
+        val wrapper = try {
+            getOrCreateWrapper(itemStack)
+        } catch (_: Exception) {
+            return false
+        }
+        val components = lore.mapNotNull { createLegacyTextComponent(it) }
+        if (components.size != lore.size) {
+            return false
+        }
+        return try {
             wrapper.setJavaComponent("minecraft:lore", components)
             true
-        }.getOrElse { false }
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun getOrCreateWrapper(itemStack: ItemStack): ComponentItemWrapper {
@@ -515,18 +559,18 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
     }
 
     private fun createLegacyTextComponent(text: String): Any? {
-        val serializerClass = runCatching {
-            LazyClass.of(
-                source = "net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer",
-                dimensions = 0,
-                isPrimitive = false,
-                classFinder = null
-            ).instance
-        }.getOrNull() ?: return null
-        val serializerReflex = runCatching { ReflexClass.of(serializerClass as Class<*>) }.getOrNull() ?: return null
-        val legacyAmpersand = runCatching {
+        val serializerClass = ClassAccess.resolveLazy(
+            "net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer"
+        ) ?: return null
+        val serializerReflex = reflectOrNull { taboolib.library.reflex.ReflexClass.of(serializerClass) } ?: return null
+        val legacyAmpersand = reflectOrNull {
             serializerReflex.getMethodSilently("legacyAmpersand", true, true)?.invokeStatic()
-        }.getOrNull() ?: return null
-        return runCatching { legacyAmpersand.invokeMethod<Any>("deserialize", text) }.getOrNull()
+        } ?: return null
+        val deserialize = legacyAmpersand.javaClass.methods.firstOrNull { method ->
+            method.name == "deserialize" &&
+                method.parameterCount == 1 &&
+                method.parameterTypes[0].isAssignableFrom(String::class.java)
+        } ?: return null
+        return reflectOrNull { deserialize.invoke(legacyAmpersand, text) }
     }
 }

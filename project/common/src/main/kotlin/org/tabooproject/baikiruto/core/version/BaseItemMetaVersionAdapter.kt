@@ -1,23 +1,23 @@
 package org.tabooproject.baikiruto.core.version
 
-import org.bukkit.Color
 import org.bukkit.Bukkit
+import org.bukkit.Color
 import org.bukkit.Material
 import org.bukkit.attribute.AttributeModifier
 import org.bukkit.enchantments.Enchantment
 import org.bukkit.inventory.EquipmentSlot
-import org.bukkit.potion.PotionEffect
-import org.bukkit.potion.PotionEffectType
 import org.bukkit.inventory.ItemFlag
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.ItemMeta
+import org.bukkit.potion.PotionEffect
+import org.bukkit.potion.PotionEffectType
+import org.tabooproject.baikiruto.core.ClassAccess
 import org.tabooproject.baikiruto.core.item.Attributes
 import taboolib.common.platform.function.info
-import java.lang.reflect.Constructor
-import java.lang.reflect.Method
-import taboolib.library.reflex.LazyClass
 import taboolib.library.reflex.Reflex.Companion.setProperty
 import taboolib.library.reflex.ReflexClass
+import java.lang.reflect.Constructor
+import java.lang.reflect.Method
 import java.util.Base64
 import java.util.Locale
 import java.util.UUID
@@ -42,62 +42,102 @@ abstract class BaseItemMetaVersionAdapter {
     private val enchantmentsByFieldName: Map<String, Enchantment> by lazy {
         buildMap {
             Enchantment.values().forEach { enchantment ->
-                runCatching { put(enchantment.name.uppercase(Locale.ENGLISH), enchantment) }
-                runCatching { put(enchantment.key.key.uppercase(Locale.ENGLISH), enchantment) }
+                put(enchantment.name.uppercase(Locale.ENGLISH), enchantment)
+                enchantmentKeyName(enchantment)
+                    ?.uppercase(Locale.ENGLISH)
+                    ?.let { key -> put(key, enchantment) }
             }
         }
     }
 
+    private fun enchantmentKeyName(enchantment: Enchantment): String? {
+        return try {
+            enchantment.key.key
+        } catch (_: NoSuchMethodError) {
+            null
+        } catch (_: UnsupportedOperationException) {
+            null
+        } catch (_: NoClassDefFoundError) {
+            null
+        } catch (_: LinkageError) {
+            null
+        }
+    }
+
     private fun resolveClass(name: String): Class<*>? {
-        return runCatching {
-            LazyClass.of(source = name, dimensions = 0, isPrimitive = false, classFinder = null).instance
-        }.getOrNull()
+        return ClassAccess.resolveLazy(name)
+    }
+
+    private fun <T> reflectOrNull(block: () -> T): T? {
+        return try {
+            block()
+        } catch (_: ReflectiveOperationException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        } catch (_: IllegalStateException) {
+            null
+        } catch (_: SecurityException) {
+            null
+        } catch (_: UnsupportedOperationException) {
+            null
+        } catch (_: NoClassDefFoundError) {
+            null
+        } catch (_: LinkageError) {
+            null
+        }
+    }
+
+    private fun reflectSucceeded(block: () -> Unit): Boolean {
+        return reflectOrNull {
+            block()
+            true
+        } == true
     }
 
     private fun invokeWithReflex(target: Any, method: Method, vararg args: Any?): Any? {
-        val classMethod = runCatching {
+        val classMethod = reflectOrNull {
             ReflexClass.of(target.javaClass).getMethodByTypeSilently(
                 method.name,
                 true,
                 true,
                 *method.parameterTypes
             )
-        }.getOrNull() ?: return null
-        return runCatching { classMethod.invoke(target, *args) }.getOrNull()
+        } ?: return null
+        return reflectOrNull { classMethod.invoke(target, *args) }
     }
 
     private fun invokeWithReflexSucceeded(target: Any, method: Method, vararg args: Any?): Boolean {
-        val classMethod = runCatching {
+        val classMethod = reflectOrNull {
             ReflexClass.of(target.javaClass).getMethodByTypeSilently(
                 method.name,
                 true,
                 true,
                 *method.parameterTypes
             )
-        }.getOrNull() ?: return false
-        return runCatching {
+        } ?: return false
+        return reflectSucceeded {
             classMethod.invoke(target, *args)
-            true
-        }.getOrDefault(false)
+        }
     }
 
     private fun invokeStaticWithReflex(owner: Class<*>, method: Method, vararg args: Any?): Any? {
-        val classMethod = runCatching {
+        val classMethod = reflectOrNull {
             ReflexClass.of(owner).getMethodByTypeSilently(
                 method.name,
                 true,
                 true,
                 *method.parameterTypes
             )
-        }.getOrNull() ?: return null
-        return runCatching { classMethod.invokeStatic(*args) }.getOrNull()
+        } ?: return null
+        return reflectOrNull { classMethod.invokeStatic(*args) }
     }
 
     private fun invokeConstructorWithReflex(constructor: Constructor<*>, vararg args: Any?): Any? {
-        val classConstructor = runCatching {
+        val classConstructor = reflectOrNull {
             ReflexClass.of(constructor.declaringClass).getConstructorByTypeSilently(*constructor.parameterTypes)
-        }.getOrNull() ?: return null
-        return runCatching { classConstructor.instance(*args) }.getOrNull()
+        } ?: return null
+        return reflectOrNull { classConstructor.instance(*args) }
     }
 
     open fun applyDisplayName(itemStack: ItemStack, displayName: String?) {
@@ -188,7 +228,13 @@ abstract class BaseItemMetaVersionAdapter {
             itemStack.itemMeta = itemMeta
             return
         }
-        runCatching { itemStack.durability = safeDamage.toShort() }
+        try {
+            itemStack.durability = safeDamage.toShort()
+        } catch (_: NoSuchMethodError) {
+            // ignore legacy durability fallback on unsupported runtimes
+        } catch (_: UnsupportedOperationException) {
+            // ignore legacy durability fallback on unsupported runtimes
+        }
     }
 
     protected open fun applyEnchantments(itemMeta: ItemMeta, rawEnchantments: Any?) {
@@ -216,7 +262,12 @@ abstract class BaseItemMetaVersionAdapter {
     protected open fun applyItemFlags(itemMeta: ItemMeta, rawFlags: Any?) {
         val flags = stringList(rawFlags)
             .mapNotNull { name ->
-                runCatching { ItemFlag.valueOf(name.uppercase(Locale.ENGLISH).replace('-', '_')) }.getOrNull()
+                val normalized = name.uppercase(Locale.ENGLISH).replace('-', '_')
+                try {
+                    ItemFlag.valueOf(normalized)
+                } catch (_: IllegalArgumentException) {
+                    null
+                }
             }
             .toTypedArray()
         if (flags.isNotEmpty()) {
@@ -320,13 +371,21 @@ abstract class BaseItemMetaVersionAdapter {
                 debugLog("[Baikiruto/Debug]   attr=$attributeName -> attribute constant not found after all fallback attempts, skipping")
                 return@forEach
             }
-            val operation = runCatching { AttributeModifier.Operation.valueOf(operationName) }.getOrNull()
+            val operation = try {
+                AttributeModifier.Operation.valueOf(operationName)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
             if (operation == null) {
                 debugLog("[Baikiruto/Debug]   attr=$attributeName -> operation '$operationName' not found (available: ${AttributeModifier.Operation.values().map { it.name }}), skipping")
                 return@forEach
             }
             val slot = slotName?.let { rawSlot ->
-                runCatching { EquipmentSlot.valueOf(rawSlot) }.getOrNull()
+                try {
+                    EquipmentSlot.valueOf(rawSlot)
+                } catch (_: IllegalArgumentException) {
+                    null
+                }
             }
             if (slotName != null && slot == null) {
                 debugLog("[Baikiruto/Debug]   attr=$attributeName -> slot '$slotName' not found (available: ${EquipmentSlot.values().map { it.name }}), skipping")
@@ -378,7 +437,7 @@ abstract class BaseItemMetaVersionAdapter {
                         // Map.Entry<Attribute, AttributeModifier>
                         val getKey = entry?.javaClass?.methods?.firstOrNull { it.name == "getKey" && it.parameterCount == 0 }
                         val getValue = entry?.javaClass?.methods?.firstOrNull { it.name == "getValue" && it.parameterCount == 0 }
-                        if (getKey != null && getValue != null && entry != null) {
+                        if (getKey != null && getValue != null) {
                             val attr = invokeWithReflex(entry, getKey)
                             val mod = invokeWithReflex(entry, getValue)
                             if (attr != null && mod != null) {
@@ -404,7 +463,7 @@ abstract class BaseItemMetaVersionAdapter {
             }
             if (removeBySlot != null) {
                 EquipmentSlot.values().forEach { slot ->
-                    runCatching { invokeWithReflexSucceeded(itemMeta, removeBySlot, slot) }
+                    invokeWithReflexSucceeded(itemMeta, removeBySlot, slot)
                 }
                 debugLog("[Baikiruto/Debug] applyAttributes: cleared existing attribute modifiers via slot-based removal (replaceAll)")
                 return
@@ -424,7 +483,7 @@ abstract class BaseItemMetaVersionAdapter {
             method.name == "getKey" && method.parameterCount == 0
         }
         if (getKey != null) {
-            val key = runCatching { getKey.invoke(modifier) }.getOrNull()
+            val key = reflectOrNull { getKey.invoke(modifier) }
             val keyStr = key?.toString().orEmpty()
             if (keyStr.startsWith("baikiruto:")) {
                 return true
@@ -435,7 +494,7 @@ abstract class BaseItemMetaVersionAdapter {
             method.name == "getName" && method.parameterCount == 0
         }
         if (getName != null) {
-            val name = runCatching { getName.invoke(modifier) }.getOrNull()?.toString().orEmpty()
+            val name = reflectOrNull { getName.invoke(modifier) }?.toString().orEmpty()
             if (name.startsWith("baikiruto.")) {
                 return true
             }
@@ -455,7 +514,7 @@ abstract class BaseItemMetaVersionAdapter {
                 method.parameterTypes[0] == EquipmentSlot::class.java
         } ?: return emptyList()
         EquipmentSlot.values().forEach { slot ->
-            val multimap = runCatching { getDefaultModifiers.invoke(material, slot) }.getOrNull() ?: return@forEach
+            val multimap = reflectOrNull { getDefaultModifiers.invoke(material, slot) } ?: return@forEach
             val entriesMethod = multimap.javaClass.methods.firstOrNull { method ->
                 method.name == "entries" && method.parameterCount == 0
             } ?: return@forEach
@@ -463,7 +522,7 @@ abstract class BaseItemMetaVersionAdapter {
             entries.forEach { entry ->
                 val getKey = entry?.javaClass?.methods?.firstOrNull { it.name == "getKey" && it.parameterCount == 0 }
                 val getValue = entry?.javaClass?.methods?.firstOrNull { it.name == "getValue" && it.parameterCount == 0 }
-                if (getKey != null && getValue != null && entry != null) {
+                if (getKey != null && getValue != null) {
                     val attr = invokeWithReflex(entry, getKey)
                     val mod = invokeWithReflex(entry, getValue)
                     if (attr != null && mod != null) {
@@ -573,7 +632,13 @@ abstract class BaseItemMetaVersionAdapter {
         val setOwningPlayer = itemMeta.javaClass.methods.firstOrNull { method ->
             method.name == "setOwningPlayer" && method.parameterCount == 1
         } ?: return
-        val offline = runCatching { Bukkit.getOfflinePlayer(owner) }.getOrNull() ?: return
+        val offline = try {
+            Bukkit.getOfflinePlayer(owner)
+        } catch (_: IllegalStateException) {
+            null
+        } catch (_: UnsupportedOperationException) {
+            null
+        } ?: return
         invokeWithReflexSucceeded(itemMeta, setOwningPlayer, offline)
     }
 
@@ -787,7 +852,13 @@ abstract class BaseItemMetaVersionAdapter {
                 icon
             ) as? PotionEffect
         }
-        return runCatching { PotionEffect(effectType, duration, amplifier, ambient, particles) }.getOrNull()
+        return try {
+            PotionEffect(effectType, duration, amplifier, ambient, particles)
+        } catch (_: NoSuchMethodError) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        }
     }
 
     /**
@@ -841,7 +912,7 @@ abstract class BaseItemMetaVersionAdapter {
             method.name == "valueOf" && method.parameterCount == 1 && method.parameterTypes[0] == String::class.java
         }
         if (valueOf != null) {
-            val result = runCatching { invokeStaticWithReflex(enumClass, valueOf, name) }.getOrNull()
+            val result = invokeStaticWithReflex(enumClass, valueOf, name)
             if (result != null) return result
         }
 
@@ -861,25 +932,16 @@ abstract class BaseItemMetaVersionAdapter {
 
         // 查找 Registry 上与目标类型匹配的静态字段
         val registryField = registryClass.fields.firstOrNull { field ->
-            java.lang.reflect.Modifier.isStatic(field.modifiers) &&
-                runCatching {
-                    val genericType = field.genericType
-                    if (genericType is java.lang.reflect.ParameterizedType) {
-                        genericType.actualTypeArguments.any { arg ->
-                            arg == targetClass || (arg is Class<*> && targetClass.isAssignableFrom(arg))
-                        }
-                    } else {
-                        false
-                    }
-                }.getOrDefault(false)
+            java.lang.reflect.Modifier.isStatic(field.modifiers) && matchesRegistryGeneric(field, targetClass)
         }
 
         // 如果找不到泛型匹配，尝试按名称匹配（如 Registry.ATTRIBUTE）
         val registry = if (registryField != null) {
-            runCatching { registryField.get(null) }.getOrNull()
+            reflectOrNull { registryField.get(null) }
         } else {
             val fieldName = targetClass.simpleName.uppercase(Locale.ENGLISH)
-            runCatching { registryClass.getField(fieldName).get(null) }.getOrNull()
+            val fallbackField = reflectOrNull { registryClass.getField(fieldName) }
+            fallbackField?.let { field -> reflectOrNull { field.get(null) } }
         } ?: return null
 
         // 尝试 registry.get(NamespacedKey)
@@ -889,6 +951,13 @@ abstract class BaseItemMetaVersionAdapter {
             method.name == "get" && method.parameterCount == 1
         } ?: return null
         return invokeWithReflex(registry, getMethod, namespacedKey)
+    }
+
+    private fun matchesRegistryGeneric(field: java.lang.reflect.Field, targetClass: Class<*>): Boolean {
+        val genericType = reflectOrNull { field.genericType } as? java.lang.reflect.ParameterizedType ?: return false
+        return genericType.actualTypeArguments.any { arg ->
+            arg == targetClass || (arg is Class<*> && targetClass.isAssignableFrom(arg))
+        }
     }
 
     private fun normalizeSkullTexture(raw: String): String {
@@ -923,17 +992,24 @@ abstract class BaseItemMetaVersionAdapter {
         return applySkullProfileValue(itemMeta, gameProfile)
     }
 
+    private fun safeBukkitServerPackageName(): String? {
+        val server = try {
+            Bukkit.getServer()
+        } catch (_: IllegalStateException) {
+            null
+        } catch (_: UnsupportedOperationException) {
+            null
+        } ?: return null
+        return server.javaClass.getPackage()?.name
+    }
+
     private fun createBukkitPlayerProfile(itemMeta: ItemMeta, gameProfile: Any): Any? {
         val candidateNames = linkedSetOf<String>()
         itemMeta.javaClass.getPackage()?.name
             ?.substringBeforeLast(".inventory", missingDelimiterValue = "")
             ?.takeIf { it.startsWith("org.bukkit.craftbukkit") }
             ?.let { candidateNames += "$it.profile.CraftPlayerProfile" }
-        runCatching { Bukkit.getServer() }
-            .getOrNull()
-            ?.javaClass
-            ?.getPackage()
-            ?.name
+        safeBukkitServerPackageName()
             ?.takeIf { it.startsWith("org.bukkit.craftbukkit") }
             ?.let { candidateNames += "$it.profile.CraftPlayerProfile" }
         candidateNames += "org.bukkit.craftbukkit.profile.CraftPlayerProfile"
@@ -999,11 +1075,10 @@ abstract class BaseItemMetaVersionAdapter {
             if (!field.type.isAssignableFrom(profile.javaClass)) {
                 return@forEach
             }
-            if (runCatching {
+            if (reflectSucceeded {
                     field.isAccessible = true
                     field.set(itemMeta, profile)
-                    true
-                }.getOrDefault(false)
+                }
             ) {
                 return true
             }
@@ -1030,19 +1105,24 @@ abstract class BaseItemMetaVersionAdapter {
     private fun createGameProfile(texture: String, signature: String?): Any? {
         val profileClass = resolveClass("com.mojang.authlib.GameProfile") ?: return null
         val propertyClass = resolveClass("com.mojang.authlib.properties.Property") ?: return null
-        val profile = runCatching {
+        val profileConstructor = reflectOrNull {
             profileClass.getConstructor(UUID::class.java, String::class.java)
-                .let { constructor -> invokeConstructorWithReflex(constructor, UUID.randomUUID(), "baikiruto") }
-        }.getOrNull() ?: return null
-        val property = runCatching {
-            if (signature.isNullOrBlank()) {
+        } ?: return null
+        val profile = invokeConstructorWithReflex(profileConstructor, UUID.randomUUID(), "baikiruto") ?: return null
+        val propertyConstructor = if (signature.isNullOrBlank()) {
+            reflectOrNull {
                 propertyClass.getConstructor(String::class.java, String::class.java)
-                    .let { constructor -> invokeConstructorWithReflex(constructor, "textures", texture) }
-            } else {
-                propertyClass.getConstructor(String::class.java, String::class.java, String::class.java)
-                    .let { constructor -> invokeConstructorWithReflex(constructor, "textures", texture, signature) }
             }
-        }.getOrNull() ?: return null
+        } else {
+            reflectOrNull {
+                propertyClass.getConstructor(String::class.java, String::class.java, String::class.java)
+            }
+        } ?: return null
+        val property = if (signature.isNullOrBlank()) {
+            invokeConstructorWithReflex(propertyConstructor, "textures", texture)
+        } else {
+            invokeConstructorWithReflex(propertyConstructor, "textures", texture, signature)
+        } ?: return null
         val getProperties = profileClass.methods.firstOrNull { method ->
             method.name == "getProperties" && method.parameterCount == 0
         } ?: return null

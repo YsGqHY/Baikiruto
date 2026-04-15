@@ -7,7 +7,7 @@ import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
 import org.bukkit.Bukkit
 import org.bukkit.inventory.ItemStack
-import taboolib.library.reflex.LazyClass
+import org.tabooproject.baikiruto.core.ClassAccess
 import taboolib.library.reflex.Reflex.Companion.getProperty
 import taboolib.library.reflex.ReflexClass
 import taboolib.module.nms.MinecraftVersion
@@ -33,45 +33,63 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
     }
 
     private fun resolveClass(name: String): Class<*>? {
-        return runCatching {
-            LazyClass.of(source = name, dimensions = 0, isPrimitive = false, classFinder = null).instance
-        }.getOrNull()
+        return ClassAccess.resolveLazy(name)
+    }
+
+    private fun <T> reflectOrNull(block: () -> T): T? {
+        return try {
+            block()
+        } catch (_: ReflectiveOperationException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        } catch (_: IllegalStateException) {
+            null
+        } catch (_: SecurityException) {
+            null
+        } catch (_: UnsupportedOperationException) {
+            null
+        } catch (_: NoClassDefFoundError) {
+            null
+        } catch (_: LinkageError) {
+            null
+        }
     }
 
     private fun invokeWithReflex(target: Any, method: Method, vararg args: Any?): Any? {
-        val classMethod = runCatching {
+        val classMethod = reflectOrNull {
             ReflexClass.of(target.javaClass).getMethodByTypeSilently(
                 method.name,
                 true,
                 true,
                 *method.parameterTypes
             )
-        }.getOrNull() ?: return null
-        return runCatching { classMethod.invoke(target, *args) }.getOrNull()
+        } ?: return null
+        return reflectOrNull { classMethod.invoke(target, *args) }
     }
 
     private fun invokeStaticWithReflex(owner: Class<*>, method: Method, vararg args: Any?): Any? {
-        val classMethod = runCatching {
+        val classMethod = reflectOrNull {
             ReflexClass.of(owner).getMethodByTypeSilently(
                 method.name,
                 true,
                 true,
                 *method.parameterTypes
             )
-        }.getOrNull() ?: return null
-        return runCatching { classMethod.invokeStatic(*args) }.getOrNull()
+        } ?: return null
+        return reflectOrNull { classMethod.invokeStatic(*args) }
     }
 
     private fun invokeConstructorWithReflex(constructor: Constructor<*>, vararg args: Any?): Any? {
-        val classConstructor = runCatching {
+        val classConstructor = reflectOrNull {
             ReflexClass.of(constructor.declaringClass).getConstructorByTypeSilently(*constructor.parameterTypes)
-        }.getOrNull() ?: return null
-        return runCatching { classConstructor.instance(*args) }.getOrNull()
+        } ?: return null
+        return reflectOrNull { classConstructor.instance(*args) }
     }
 
     private fun getStaticField(owner: Class<*>, name: String): Any? {
-        val field = runCatching { ReflexClass.of(owner).getFieldSilently(name, true, true) }.getOrNull() ?: return null
-        return runCatching { field.get(null) }.getOrNull()
+        val field = reflectOrNull { ReflexClass.of(owner).getFieldSilently(name, true, true) } ?: return null
+        return reflectOrNull { field.get(null) }
     }
 
     fun setComponent(type: Any, value: Any?) {
@@ -150,7 +168,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
 
     fun <T> getJavaComponent(type: Any): T? {
         val componentType = ensureDataComponentType(type)
-        val codec = runCatching { resolveCodec(componentType) }.getOrNull() ?: return null
+        val codec = reflectOrNull { resolveCodec(componentType) } ?: return null
 
         return try {
             val componentData = invokeHandleGet(componentType) ?: return null
@@ -213,10 +231,8 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
         val fieldName = rawPath.uppercase(Locale.ENGLISH).replace('-', '_')
         val dataComponentsClass = resolveClass("net.minecraft.core.component.DataComponents") ?: return null
 
-        return runCatching {
-            val value = getStaticField(dataComponentsClass, fieldName)
-            if (value != null && dataComponentTypeClass.isInstance(value)) value else null
-        }.getOrNull()
+        val value = getStaticField(dataComponentsClass, fieldName) ?: return null
+        return if (dataComponentTypeClass.isInstance(value)) value else null
     }
 
     private fun findRegistryValue(registry: Any, resourceLocation: Any, dataComponentTypeClass: Class<*>): Any? {
@@ -236,7 +252,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
             if (!isRegistryKeyParameter(method.parameterTypes[0], resourceLocation)) {
                 return@forEach
             }
-            val raw = runCatching { invokeWithReflex(registry, method, resourceLocation) }.getOrNull() ?: return@forEach
+            val raw = invokeWithReflex(registry, method, resourceLocation) ?: return@forEach
             val resolved = resolveDataComponentType(raw, dataComponentTypeClass)
             if (resolved != null) {
                 return resolved
@@ -269,7 +285,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
         val methods = holder.javaClass.methods
             .filter { it.parameterCount == 0 && it.name in setOf("value", "getValue", "valueOrThrow") }
         methods.forEach { method ->
-            val value = runCatching { invokeWithReflex(holder, method) }.getOrNull() ?: return@forEach
+            val value = invokeWithReflex(holder, method) ?: return@forEach
             if (dataComponentTypeClass.isInstance(value)) {
                 return value
             }
@@ -315,7 +331,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
             }
 
         methods.forEach { method ->
-            val value = runCatching { invokeStaticWithReflex(clazz, method, *args) }.getOrNull()
+            val value = invokeStaticWithReflex(clazz, method, *args)
             val unwrapped = unwrapOptional(value)
             if (unwrapped != null) {
                 return unwrapped
@@ -328,7 +344,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
         clazz.declaredConstructors
             .filter { it.parameterCount == args.size }
             .forEach { constructor ->
-                val value = runCatching { invokeConstructorWithReflex(constructor, *args) }.getOrNull()
+                val value = invokeConstructorWithReflex(constructor, *args)
                 if (value != null) {
                     return value
                 }
@@ -408,8 +424,12 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
         }
         if (getOrThrow != null) {
             val noOpConsumer = Consumer<String> { }
-            return runCatching { invokeWithReflex(result, getOrThrow, false, noOpConsumer) }.getOrElse { ex ->
+            try {
+                return getOrThrow.invoke(result, false, noOpConsumer)
+            } catch (ex: ReflectiveOperationException) {
                 throw IllegalArgumentException(formatThrowable(unwrapInvocation(ex)))
+            } catch (ex: IllegalArgumentException) {
+                throw IllegalArgumentException(formatThrowable(ex))
             }
         }
 
@@ -434,7 +454,11 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
         if (!looksLikeJson) {
             return null
         }
-        return runCatching { JsonParser.parseString(trimmed) }.getOrNull()
+        return try {
+            JsonParser.parseString(trimmed)
+        } catch (_: RuntimeException) {
+            null
+        }
     }
 
     private fun toJsonElement(value: Any?): JsonElement? {
@@ -653,7 +677,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
         val methods = (named + fallback)
             .toList()
         methods.forEach { method ->
-            val value = runCatching { invokeWithReflex(handle, method, componentType) }.getOrNull() as? Boolean
+            val value = invokeWithReflex(handle, method, componentType) as? Boolean
             if (value != null) {
                 return value
             }
@@ -684,7 +708,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
         val methods = (named + fallback)
             .toList()
         methods.forEach { method ->
-            val value = runCatching { invokeWithReflex(handle, method, componentType) }.getOrNull() as? Boolean
+            val value = invokeWithReflex(handle, method, componentType) as? Boolean
             if (value != null) {
                 return value
             }
@@ -693,11 +717,10 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
     }
 
     private fun invokeHandleGetItem(): Any? {
-        return runCatching {
-            handle.javaClass.methods.firstOrNull { method ->
-                method.name == "getItem" && method.parameterCount == 0
-            }?.let { method -> invokeWithReflex(handle, method) }
-        }.getOrNull()
+        val method = handle.javaClass.methods.firstOrNull { candidate ->
+            candidate.name == "getItem" && candidate.parameterCount == 0
+        } ?: return null
+        return invokeWithReflex(handle, method)
     }
 
     private fun resolveComponentMap(item: Any): Any? {
@@ -709,7 +732,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
             }
             .toList()
         methods.forEach { method ->
-            val value = runCatching { invokeWithReflex(item, method) }.getOrNull()
+            val value = invokeWithReflex(item, method)
             if (value != null) {
                 return value
             }
@@ -728,7 +751,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
             .toList()
 
         methods.forEach { method ->
-            val value = runCatching { invokeWithReflex(componentMap, method, componentType) }.getOrNull()
+            val value = invokeWithReflex(componentMap, method, componentType)
             if (value != null) {
                 return value
             }
@@ -771,7 +794,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
             .filter { method -> method.name == methodName && method.parameterCount == 0 }
             .toList()
         methods.forEach { method ->
-            val value = runCatching { invokeWithReflex(target, method) }.getOrNull()
+            val value = invokeWithReflex(target, method)
             if (value != null) {
                 return value
             }
@@ -808,9 +831,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
             .toList()
 
         methods.forEach { method ->
-            val value = runCatching {
-                invokeWithReflex(componentType, method)
-            }.getOrNull()
+            val value = invokeWithReflex(componentType, method)
             val codec = unwrapOptional(value)
             if (codec != null && codecClass.isInstance(codec)) {
                 return codec
@@ -877,7 +898,7 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
                             method.returnType.name.contains("HolderLookup"))
                 }
             .forEach { method ->
-                val value = runCatching { invokeWithReflex(current, method) }.getOrNull()
+                val value = invokeWithReflex(current, method)
                 if (value != null) {
                     result += value
                 }
@@ -926,8 +947,6 @@ class ComponentItemWrapper(private val itemStack: ItemStack) {
      * 用于 applyCustomData 合并场景，避免覆盖已有的 baikiruto 运行时数据。
      */
     fun getCustomDataMap(): Map<*, *>? {
-        return runCatching {
-            getJavaComponent<Any>("minecraft:custom_data") as? Map<*, *>
-        }.getOrNull()
+        return getJavaComponent<Any>("minecraft:custom_data") as? Map<*, *>
     }
 }
