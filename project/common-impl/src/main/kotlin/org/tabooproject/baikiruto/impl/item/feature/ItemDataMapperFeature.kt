@@ -26,16 +26,17 @@ object ItemDataMapperFeature {
             variables["itemId"] = stream.itemId
             variables["data"] = stream.runtimeData
             variables["it"] = stream.getRuntimeData(key)
-            val mapped = runCatching {
+            val mapped = try {
                 Baikiruto.api().getScriptHandler().invoke(
                     source = source,
                     id = "item-data-mapper:${stream.itemId}:$key",
                     sender = sender,
                     variables = variables
                 )
-            }.onFailure {
-                BaikirutoLog.scriptRuntimeFailed("${stream.itemId}:data-mapper:$key", it)
-            }.getOrNull() ?: return@forEach
+            } catch (ex: Exception) {
+                BaikirutoLog.scriptRuntimeFailed("${stream.itemId}:data-mapper:$key", ex)
+                null
+            } ?: return@forEach
             stream.setRuntimeData(key, mapped)
             stream.markSignal(ItemSignal.DATA_MAPPED)
         }

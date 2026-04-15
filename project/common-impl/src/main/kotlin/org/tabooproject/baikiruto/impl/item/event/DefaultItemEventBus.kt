@@ -13,13 +13,19 @@ object DefaultItemEventBus : ItemEventBus {
             if (!subscriber.type.isInstance(event)) {
                 return@forEach
             }
-            runCatching {
+            try {
                 @Suppress("UNCHECKED_CAST")
                 (subscriber as Subscriber<Any>).handler(event)
+            } catch (_: Exception) {
+                // ignore subscriber failure to keep event bus isolated
             }
         }
         if (event is BukkitProxyEvent) {
-            runCatching { event.call() }
+            try {
+                event.call()
+            } catch (_: Exception) {
+                // ignore proxy event dispatch failure to keep event bus isolated
+            }
         }
     }
 

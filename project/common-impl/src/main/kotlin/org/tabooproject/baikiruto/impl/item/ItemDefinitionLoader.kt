@@ -181,13 +181,14 @@ object ItemDefinitionLoader {
                 if (factory == null) {
                     console().sendLang("log-meta-factory-missing", factoryType, key)
                 } else {
-                    val created = runCatching {
+                    val created = try {
                         factory.create(key, source, scripts)
-                    }.onFailure {
+                    } catch (ex: Exception) {
                         console().sendLang(
-                            "log-meta-factory-failed", key, factory.id, it.message.orEmpty()
+                            "log-meta-factory-failed", key, factory.id, ex.message.orEmpty()
                         )
-                    }.getOrNull()
+                        null
+                    }
                     if (created != null) {
                         return@map created
                     }
@@ -224,8 +225,10 @@ object ItemDefinitionLoader {
     }
 
     private fun loadConfiguration(file: File): Configuration? {
-        return runCatching { Configuration.loadFromFile(file) }.getOrElse {
-            console().sendLang("log-item-file-load-failed", file.name, it.message.orEmpty())
+        return try {
+            Configuration.loadFromFile(file)
+        } catch (ex: Exception) {
+            console().sendLang("log-item-file-load-failed", file.name, ex.message.orEmpty())
             null
         }
     }
@@ -2561,7 +2564,11 @@ object ItemDefinitionLoader {
         val materialName = source?.trim()?.takeIf { it.isNotEmpty() } ?: return Material.STONE
         return Material.matchMaterial(materialName)
             ?: Material.matchMaterial(materialName.uppercase(Locale.ENGLISH))
-            ?: runCatching { XMaterial.matchXMaterial(materialName).orElse(null)?.parseMaterial() }.getOrNull()
+            ?: try {
+                XMaterial.matchXMaterial(materialName).orElse(null)?.parseMaterial()
+            } catch (_: Exception) {
+                null
+            }
             ?: Material.STONE
     }
 

@@ -23,7 +23,7 @@ object BaikirutoMetrics {
         if (!bStatsInitialized.compareAndSet(false, true)) {
             return
         }
-        runCatching {
+        try {
             Metrics(bStatsPluginId, pluginVersion, Platform.BUKKIT).also { metrics ->
                 metrics.addCustomChart(SingleLineChart("registered_items") { registeredItemCount() })
                 metrics.addCustomChart(SingleLineChart("registered_scripts") { registeredScriptCount() })
@@ -37,7 +37,7 @@ object BaikirutoMetrics {
                 bStats = it
                 console().sendLang("log-bstats-enabled", bStatsPluginId)
             }
-        }.onFailure { ex ->
+        } catch (ex: Exception) {
             console().sendLang("log-bstats-failed", ex.message.orEmpty())
         }
     }

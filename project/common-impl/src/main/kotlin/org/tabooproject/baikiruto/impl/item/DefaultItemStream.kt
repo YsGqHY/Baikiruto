@@ -24,7 +24,6 @@ import org.tabooproject.baikiruto.impl.item.feature.ItemUniqueFeature
 import org.tabooproject.baikiruto.impl.hook.HeadDatabaseHook
 import org.tabooproject.baikiruto.impl.version.VersionAdapterService
 import taboolib.platform.compat.replacePlaceholder
-import taboolib.library.reflex.Reflex.Companion.invokeMethod
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -301,24 +300,64 @@ class DefaultItemStream(
     private fun readLegacyDamage(itemStack: ItemStack): Int {
         val itemMeta = itemStack.itemMeta
         if (itemMeta != null) {
-            val damage = runCatching { itemMeta.invokeMethod<Number>("getDamage") }.getOrNull()?.toInt()
+            val getDamage = itemMeta.javaClass.methods.firstOrNull { method ->
+                method.name == "getDamage" && method.parameterCount == 0
+            }
+            val damage = if (getDamage != null) {
+                try {
+                    (getDamage.invoke(itemMeta) as? Number)?.toInt()
+                } catch (_: ReflectiveOperationException) {
+                    null
+                } catch (_: IllegalArgumentException) {
+                    null
+                }
+            } else {
+                null
+            }
             if (damage != null) {
                 return damage
             }
         }
-        return runCatching { itemStack.durability.toInt() }.getOrDefault(0)
+        return try {
+            itemStack.durability.toInt()
+        } catch (_: NoSuchMethodError) {
+            0
+        } catch (_: UnsupportedOperationException) {
+            0
+        }
     }
 
     private fun applyLegacyDamage(itemStack: ItemStack, damage: Int) {
         val value = damage.coerceAtLeast(0)
         val itemMeta = itemStack.itemMeta
         if (itemMeta != null) {
-            if (runCatching { itemMeta.invokeMethod<Any?>("setDamage", value) }.isSuccess) {
-                itemStack.itemMeta = itemMeta
-                return
+            val setDamage = itemMeta.javaClass.methods.firstOrNull { method ->
+                method.name == "setDamage" &&
+                    method.parameterCount == 1 &&
+                    (method.parameterTypes[0] == Int::class.javaPrimitiveType || method.parameterTypes[0] == Int::class.javaObjectType)
+            }
+            if (setDamage != null) {
+                val applied = try {
+                    setDamage.invoke(itemMeta, value)
+                    true
+                } catch (_: ReflectiveOperationException) {
+                    false
+                } catch (_: IllegalArgumentException) {
+                    false
+                }
+                if (applied) {
+                    itemStack.itemMeta = itemMeta
+                    return
+                }
             }
         }
-        runCatching { itemStack.durability = value.toShort() }
+        try {
+            itemStack.durability = value.toShort()
+        } catch (_: NoSuchMethodError) {
+            // ignore legacy fallback on unsupported runtimes
+        } catch (_: UnsupportedOperationException) {
+            // ignore legacy fallback on unsupported runtimes
+        }
     }
 
     private fun applyI18nDisplay() {
@@ -843,12 +882,14 @@ class DefaultItemStream(
             ),
             "itemStack" to backingItem.serialize()
         )
-        runCatching {
+        try {
             ItemBuildDebugMessenger.send(
                 player = target,
                 rootKey = "baikiruto_debug_item_build",
                 payload = payload
             )
+        } catch (_: Exception) {
+            // debug 消息发送失败不影响主流程
         }
     }
 

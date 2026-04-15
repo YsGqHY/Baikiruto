@@ -13,7 +13,11 @@ object ItemNativeFeature {
         if (native.isEmpty()) {
             return
         }
-        val fullTag = runCatching { itemStack.getItemTag() }.getOrDefault(ItemTag())
+        val fullTag = try {
+            itemStack.getItemTag()
+        } catch (_: Exception) {
+            ItemTag()
+        }
         native.forEach { (rawKey, rawValue) ->
             val path = rawKey?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
             val encoded = encode(rawValue) ?: return@forEach

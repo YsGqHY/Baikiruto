@@ -51,7 +51,11 @@ object BaikirutoFileWatcher {
     @Awake(LifeCycle.DISABLE)
     private fun stop() {
         running.set(false)
-        runCatching { watchService?.close() }
+        try {
+            watchService?.close()
+        } catch (_: Exception) {
+            // ignore watcher shutdown exception
+        }
         watcherThread = null
         watchService = null
     }

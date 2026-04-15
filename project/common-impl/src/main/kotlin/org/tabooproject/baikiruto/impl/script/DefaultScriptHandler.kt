@@ -108,8 +108,10 @@ class DefaultScriptHandler : BaikirutoScriptHandler {
     }
 
     private fun sendLangSafely(key: String, vararg args: Any) {
-        runCatching {
+        try {
             console().sendLang(key, *args)
+        } catch (_: Exception) {
+            // ignore language output failure
         }
     }
 

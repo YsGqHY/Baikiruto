@@ -47,7 +47,11 @@ object ItemStreamTransport {
         metaHistory: List<String>,
         runtimeData: Map<String, Any?>
     ) {
-        val fullTag = runCatching { itemStack.getItemTag() }.getOrDefault(ItemTag())
+        val fullTag = try {
+            itemStack.getItemTag()
+        } catch (_: Exception) {
+            ItemTag()
+        }
         val root = ItemTag().also { compound ->
             compound[ID] = ItemTagData(itemId)
             compound[VERSION] = ItemTagData(versionHash)
@@ -59,7 +63,11 @@ object ItemStreamTransport {
     }
 
     private fun rootTag(itemStack: ItemStack): ItemTag? {
-        val tag = runCatching { itemStack.getItemTag() }.getOrNull() ?: return null
+        val tag = try {
+            itemStack.getItemTag()
+        } catch (_: Exception) {
+            null
+        } ?: return null
         return tag[ROOT]?.asCompound()
     }
 
