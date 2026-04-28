@@ -200,9 +200,18 @@ object ItemActionListener {
                 }
             }
         }
-        if (ItemCooldownFeature.shouldBlock(managed.stream, event.player, triggers)) {
-            event.isCancelled = true
-            return
+        // 左键交互：软阻断（冷却期间跳过脚本但不取消事件）
+        // 右键交互：硬阻断（冷却期间取消事件）
+        val isLeftClick = event.action == Action.LEFT_CLICK_AIR || event.action == Action.LEFT_CLICK_BLOCK
+        if (isLeftClick) {
+            if (ItemCooldownFeature.shouldThrottle(managed.stream, event.player, triggers)) {
+                return
+            }
+        } else {
+            if (ItemCooldownFeature.shouldBlock(managed.stream, event.player, triggers)) {
+                event.isCancelled = true
+                return
+            }
         }
         val outcome = dispatch(managed, triggers, event.player, event)
         if (outcome.cancelled) {
@@ -271,8 +280,8 @@ object ItemActionListener {
             OwnershipValidation.Pass -> Unit
         }
         val triggers = listOf(ItemScriptTrigger.ATTACK)
-        if (ItemCooldownFeature.shouldBlock(managed.stream, player, triggers)) {
-            event.isCancelled = true
+        // 软阻断：冷却期间跳过脚本但保留原版伤害
+        if (ItemCooldownFeature.shouldThrottle(managed.stream, player, triggers)) {
             return
         }
         val outcome = dispatch(managed, triggers, player, event)
