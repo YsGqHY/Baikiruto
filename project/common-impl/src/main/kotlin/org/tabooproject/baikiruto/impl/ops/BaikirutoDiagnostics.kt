@@ -42,6 +42,7 @@ object BaikirutoDiagnostics {
             "avgItemBuildMicros=${BaikirutoMetrics.itemBuildAverageMicros()}",
             "fluxonAvailable=${FluxonChecker.isReady()}",
             "fluxonSource=${FluxonChecker.sourceId()}",
+            "fluxonExternalCompatible=${FluxonChecker.isExternalPluginCompatible()}",
             "fluxonBundledAvailable=${FluxonChecker.isBundledAvailable()}",
             "fluxonBootstrapFailure=${FluxonChecker.startupFailureMessage() ?: "none"}",
             "hookMythicConfigured=${BaikirutoSettings.mythicHookEnabled}",

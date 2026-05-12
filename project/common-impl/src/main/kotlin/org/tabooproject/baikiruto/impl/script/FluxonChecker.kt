@@ -32,6 +32,11 @@ object FluxonChecker {
     private const val MAVEN_CENTRAL_REPOSITORY = "https://repo.maven.apache.org/maven2"
     private const val BUNDLED_FLUXON_PLUGIN_CLASS = "org.tabooproject.baikiruto.impl.script.fluxon.FluxonPlugin"
     private const val BUNDLED_FLUXON_RUNTIME_CLASS = "org.tabooproject.baikiruto.impl.script.fluxon.runtime.FluxonRuntime"
+    private val EXTERNAL_REQUIRED_CLASSES = listOf(
+        "org.tabooproject.fluxon.FluxonShell",
+        "org.tabooproject.fluxon.ParseScript",
+        "org.tabooproject.fluxon.parser.ParsedScript"
+    )
 
     enum class Source(val id: String) {
         NONE("NONE"),
@@ -59,7 +64,16 @@ object FluxonChecker {
     }
 
     fun isBundledAvailable(): Boolean {
-        return isClassAvailable(BUNDLED_FLUXON_PLUGIN_CLASS) || isClassAvailable(BUNDLED_FLUXON_RUNTIME_CLASS)
+        val hasRuntime = isClassAvailable(BUNDLED_FLUXON_PLUGIN_CLASS) || isClassAvailable(BUNDLED_FLUXON_RUNTIME_CLASS)
+        return hasRuntime && requiredClassesAvailable(bundledRequiredClasses(), javaClass.classLoader)
+    }
+
+    fun isExternalPluginCompatible(): Boolean {
+        val plugin = Bukkit.getPluginManager().getPlugin("FluxonPlugin") ?: return false
+        if (!plugin.isEnabled) {
+            return false
+        }
+        return requiredClassesAvailable(EXTERNAL_REQUIRED_CLASSES, plugin.javaClass.classLoader)
     }
 
     fun sourceId(): String {
@@ -217,8 +231,20 @@ object FluxonChecker {
     }
 
     private fun hasExternalFluxonPlugin(): Boolean {
-        val plugin = Bukkit.getPluginManager().getPlugin("FluxonPlugin") ?: return false
-        return plugin.isEnabled
+        return isExternalPluginCompatible()
+    }
+
+    private fun bundledRequiredClasses(): List<String> {
+        val prefix = relocatedFluxonPackage()
+        return listOf(
+            "$prefix.FluxonShell",
+            "$prefix.ParseScript",
+            "$prefix.parser.ParsedScript"
+        )
+    }
+
+    private fun requiredClassesAvailable(names: List<String>, classLoader: ClassLoader): Boolean {
+        return names.all { name -> ClassAccess.isAvailable(name, classLoader) }
     }
 
     private fun isClassAvailable(name: String): Boolean {

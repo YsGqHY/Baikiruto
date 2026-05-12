@@ -29,7 +29,7 @@ object FluxonRelocateLoader {
     fun init() {
         if (!propertySetted) {
             when {
-                Bukkit.getServer().pluginManager.getPlugin("FluxonPlugin") != null -> {
+                FluxonChecker.isExternalPluginCompatible() -> {
                     propertySetted = true
                     needToTranslate = true
                 }
