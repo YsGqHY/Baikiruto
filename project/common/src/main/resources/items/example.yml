@@ -291,6 +291,37 @@ items:
           server: "1.21.11"
           channel: "itemstream"
 
+  "example:protected_drop":
+    icon: "TOTEM_OF_UNDYING"
+    version-hash: "m170-protection"
+    name: "&eProtected Drop"
+    lore:
+      - "&7Demonstrates Baikiruto 1.7.0 protection rules."
+      - "&7Drop display, crafting, container and destroy protection."
+    meta:
+      drop:
+        display-name: "&6Protected Artifact"
+        display-visible: true
+      protection:
+        crafting:
+          any: true
+          stations:
+            - ANVIL
+            - GRINDSTONE
+            - SMITHING
+        containers:
+          deny:
+            - HOPPER
+            - FURNACE
+            - ARMOR_STAND
+        destroy:
+          enabled: true
+          causes:
+            - fire
+            - lava
+            - cactus
+            - lightning
+
   "example:remainder":
     icon: "APPLE"
     version-hash: "m12111-example"

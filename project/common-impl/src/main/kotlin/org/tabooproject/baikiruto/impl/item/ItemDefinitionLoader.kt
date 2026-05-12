@@ -14,6 +14,8 @@ import org.tabooproject.baikiruto.core.item.Meta
 import org.tabooproject.baikiruto.core.item.event.PluginReloadEvent
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature
+import org.tabooproject.baikiruto.impl.item.feature.ItemDropEntityFeature
+import org.tabooproject.baikiruto.impl.item.feature.ItemProtectionFeature
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
 import taboolib.common.platform.function.console
@@ -1243,6 +1245,12 @@ object ItemDefinitionLoader {
             return emptyMap()
         }
         val effects = linkedMapOf<String, Any?>()
+        parseDropMeta(section).forEach { (key, value) ->
+            effects[key] = value
+        }
+        parseProtectionMeta(section).forEach { (key, value) ->
+            effects[key] = value
+        }
         if (section.getBoolean("shiny")) {
             effects["glow"] = true
         }
@@ -1370,6 +1378,12 @@ object ItemDefinitionLoader {
             return emptyMap()
         }
         val effects = linkedMapOf<String, Any?>()
+        parseDropMeta(section).forEach { (key, value) ->
+            effects[key] = value
+        }
+        parseProtectionMeta(section).forEach { (key, value) ->
+            effects[key] = value
+        }
         if (asBoolean(section["shiny"]) == true) {
             effects["glow"] = true
         }
@@ -1483,6 +1497,152 @@ object ItemDefinitionLoader {
             console().sendMessage("[Baikiruto/Debug] parseMetaEffects(Map): final effects keys=${effects.keys}, has attributes=${"attributes" in effects}")
         }
         return effects
+    }
+
+    private fun parseDropMeta(section: ConfigurationSection): Map<String, Any?> {
+        return parseDropMeta(sectionToMap(section))
+    }
+
+    private fun parseDropMeta(source: Map<String, Any?>): Map<String, Any?> {
+        val effects = linkedMapOf<String, Any?>()
+        val drop = anyToMap(readAlias(source, "drop"))
+        val displayName = stringValue(
+            readAlias(drop, "display-name", "display_name", "displayName", "name")
+                ?: readAlias(source, "drop-name", "drop_name", "dropName")
+        )
+        if (!displayName.isNullOrBlank()) {
+            effects[ItemDropEntityFeature.KEY_DISPLAY_NAME] = displayName
+        }
+        val displayVisible = asBoolean(
+            readAlias(drop, "display-visible", "display_visible", "displayVisible", "visible")
+                ?: readAlias(source, "drop-visible", "drop_visible", "dropVisible")
+        )
+        if (displayVisible != null) {
+            effects[ItemDropEntityFeature.KEY_DISPLAY_VISIBLE] = displayVisible
+        }
+        return effects
+    }
+
+    private fun parseProtectionMeta(section: ConfigurationSection): Map<String, Any?> {
+        return parseProtectionMeta(sectionToMap(section))
+    }
+
+    private fun parseProtectionMeta(source: Map<String, Any?>): Map<String, Any?> {
+        val effects = linkedMapOf<String, Any?>()
+        val roots = listOf(
+            anyToMap(readAlias(source, "rules")),
+            anyToMap(readAlias(source, "protect")),
+            anyToMap(readAlias(source, "protection"))
+        )
+        roots.forEach { root ->
+            if (root.isEmpty()) {
+                return@forEach
+            }
+            parseProtectionCrafting(readAlias(root, "crafting")).forEach { (key, value) ->
+                effects[key] = value
+            }
+            parseProtectionContainers(readAlias(root, "containers", "container")).forEach { (key, value) ->
+                effects[key] = value
+            }
+            parseProtectionDestroy(readAlias(root, "destroy", "damage")).forEach { (key, value) ->
+                effects[key] = value
+            }
+        }
+
+        val noCraft = asBoolean(readAlias(source, "no-craft", "no_craft", "noCraft"))
+        if (noCraft != null) {
+            effects[ItemProtectionFeature.KEY_CRAFTING_ANY] = noCraft
+        }
+        val noDestroy = asBoolean(readAlias(source, "no-destroy", "no_destroy", "noDestroy"))
+        if (noDestroy != null) {
+            effects[ItemProtectionFeature.KEY_DESTROY_ENABLED] = noDestroy
+            if (noDestroy && ItemProtectionFeature.KEY_DESTROY_CAUSES !in effects) {
+                effects[ItemProtectionFeature.KEY_DESTROY_CAUSES] = listOf("all")
+            }
+        }
+        return effects
+    }
+
+    private fun parseProtectionCrafting(source: Any?): Map<String, Any?> {
+        val direct = asBoolean(source)
+        if (direct != null) {
+            return mapOf(ItemProtectionFeature.KEY_CRAFTING_ANY to direct)
+        }
+        val section = anyToMap(source)
+        if (section.isEmpty()) {
+            return emptyMap()
+        }
+        val effects = linkedMapOf<String, Any?>()
+        asBoolean(readAlias(section, "vanilla", "vanilla-crafting", "vanilla_crafting", "vanillaCrafting"))?.let {
+            effects[ItemProtectionFeature.KEY_CRAFTING_VANILLA] = it
+        }
+        asBoolean(readAlias(section, "any", "all"))?.let {
+            effects[ItemProtectionFeature.KEY_CRAFTING_ANY] = it
+        }
+        val stations = toStringList(
+            readAlias(section, "stations", "station", "workstations", "work-stations", "work_stations", "workStations")
+        ).mapNotNull { station -> ItemProtectionFeature.normalizeStation(station) }
+            .distinct()
+        if (stations.isNotEmpty()) {
+            effects[ItemProtectionFeature.KEY_CRAFTING_STATIONS] = stations
+        }
+        return effects
+    }
+
+    private fun parseProtectionContainers(source: Any?): Map<String, Any?> {
+        val denySource = when (source) {
+            is Map<*, *>, is ConfigurationSection -> readAlias(anyToMap(source), "deny", "denied", "blocks", "block", "blacklist")
+            else -> source
+        }
+        val denied = toStringList(denySource)
+            .mapNotNull { container -> ItemProtectionFeature.normalizeContainer(container) }
+            .distinct()
+        return if (denied.isEmpty()) {
+            emptyMap()
+        } else {
+            mapOf(ItemProtectionFeature.KEY_CONTAINERS_DENY to denied)
+        }
+    }
+
+    private fun parseProtectionDestroy(source: Any?): Map<String, Any?> {
+        val direct = asBoolean(source)
+        if (direct != null) {
+            return mapOf(ItemProtectionFeature.KEY_DESTROY_ENABLED to direct)
+        }
+        val section = anyToMap(source)
+        if (section.isEmpty()) {
+            return emptyMap()
+        }
+        val effects = linkedMapOf<String, Any?>()
+        asBoolean(readAlias(section, "enabled", "enable"))?.let {
+            effects[ItemProtectionFeature.KEY_DESTROY_ENABLED] = it
+        }
+        val causes = toStringList(readAlias(section, "causes", "cause", "types", "type", "damage-types", "damageTypes"))
+            .mapNotNull { cause -> ItemProtectionFeature.normalizeDestroyCauseToken(cause) }
+            .distinct()
+        if (causes.isNotEmpty()) {
+            effects[ItemProtectionFeature.KEY_DESTROY_CAUSES] = causes
+        }
+        return effects
+    }
+
+    private fun readAlias(source: Map<String, Any?>, vararg aliases: String): Any? {
+        aliases.forEach { alias ->
+            if (source.containsKey(alias)) {
+                return source[alias]
+            }
+        }
+        val normalizedAliases = aliases.map(::normalizeConfigKey).toSet()
+        return source.entries.firstOrNull { (key, _) ->
+            normalizeConfigKey(key) in normalizedAliases
+        }?.value
+    }
+
+    private fun normalizeConfigKey(source: String): String {
+        return source
+            .trim()
+            .filterNot { it == '-' || it == '_' }
+            .lowercase(Locale.ENGLISH)
     }
 
     private fun parsePotion(section: ConfigurationSection?): Map<String, Any?> {
