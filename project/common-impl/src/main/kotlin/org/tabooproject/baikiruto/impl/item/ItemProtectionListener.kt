@@ -37,16 +37,16 @@ object ItemProtectionListener {
 
     @SubscribeEvent
     fun onPrepareCraft(event: PrepareItemCraftEvent) {
-        if (event.inventory.matrix.any(::blocksCrafting)) {
+        if (event.inventory.matrix.any { stack -> blocksCrafting(stack, "CRAFTING") }) {
             event.inventory.result = null
         }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onCraft(event: CraftItemEvent) {
-        if (event.inventory.matrix.any(::blocksCrafting) ||
-            blocksCrafting(event.currentItem) ||
-            blocksCrafting(event.cursor)
+        if (event.inventory.matrix.any { stack -> blocksCrafting(stack, "CRAFTING") } ||
+            blocksCrafting(event.currentItem, "CRAFTING") ||
+            blocksCrafting(event.cursor, "CRAFTING")
         ) {
             cancel(event, event.whoClicked as? Player)
         }
@@ -162,9 +162,9 @@ object ItemProtectionListener {
         }
     }
 
-    private fun blocksCrafting(itemStack: ItemStack?): Boolean {
+    private fun blocksCrafting(itemStack: ItemStack?, station: String): Boolean {
         val stream = read(itemStack) ?: return false
-        return ItemProtectionFeature.blocksVanillaCrafting(stream) || ItemProtectionFeature.blocksAnyCrafting(stream)
+        return ItemProtectionFeature.blocksVanillaCrafting(stream) || ItemProtectionFeature.blocksStation(stream, station)
     }
 
     private fun blocksTopTarget(itemStack: ItemStack?, target: String): Boolean {

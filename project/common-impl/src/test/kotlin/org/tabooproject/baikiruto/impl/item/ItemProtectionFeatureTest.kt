@@ -39,6 +39,28 @@ class ItemProtectionFeatureTest {
     }
 
     @Test
+    fun `should apply station rules when any crafting is false or absent`() {
+        val absentAny = stream(
+            mapOf(
+                ItemProtectionFeature.KEY_CRAFTING_STATIONS to listOf("crafting_table", "anvil")
+            )
+        )
+        val falseAny = stream(
+            mapOf(
+                ItemProtectionFeature.KEY_CRAFTING_ANY to false,
+                ItemProtectionFeature.KEY_CRAFTING_STATIONS to listOf("crafting_table", "anvil")
+            )
+        )
+
+        assertTrue(ItemProtectionFeature.blocksStation(absentAny, "CRAFTING"))
+        assertTrue(ItemProtectionFeature.blocksStation(absentAny, "ANVIL"))
+        assertFalse(ItemProtectionFeature.blocksStation(absentAny, "GRINDSTONE"))
+        assertTrue(ItemProtectionFeature.blocksStation(falseAny, "CRAFTING"))
+        assertTrue(ItemProtectionFeature.blocksStation(falseAny, "ANVIL"))
+        assertFalse(ItemProtectionFeature.blocksAnyCrafting(falseAny))
+    }
+
+    @Test
     fun `should normalize container aliases`() {
         val stream = stream(
             mapOf(
