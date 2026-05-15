@@ -3,6 +3,7 @@ package org.tabooproject.baikiruto.impl.item
 import taboolib.library.configuration.ConfigurationSection
 import org.tabooproject.baikiruto.core.BaikirutoScriptSource
 import org.tabooproject.baikiruto.core.item.ItemModel
+import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -81,6 +82,24 @@ class ItemDefinitionLoaderCompatibilityTest {
         )
     }
 
+
+    @Test
+    fun `should parse cancelled cooldown triggers from use cooldown component`() {
+        val effects = invokeMapMethod(
+            "parseComponents",
+            mapOf(
+                "use_cooldown" to mapOf(
+                    "seconds" to 1.0,
+                    "cooldown_group" to "baikiruto:test",
+                    "apply_on_cancelled_triggers" to listOf("on_shoot", "right_click", "missing")
+                )
+            )
+        )
+
+        assertEquals(20L, effects["cooldown"])
+        assertEquals("baikiruto:test", effects["use-cooldown-group"])
+        assertEquals(listOf("shoot", "right_click"), effects[ItemCooldownFeature.KEY_APPLY_ON_CANCELLED_TRIGGERS])
+    }
 
     @Test
     fun `should keep raw components for high version adapter`() {

@@ -1,5 +1,6 @@
 package org.tabooproject.baikiruto.impl.item
 
+import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDropEntityFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemProtectionFeature
 import kotlin.test.Test
@@ -77,6 +78,38 @@ class ItemDefinitionLoaderProtectionTest {
         assertEquals(listOf("DECORATED_POT", "SMOKER"), parsed[ItemProtectionFeature.KEY_CONTAINERS_DENY])
         assertEquals(true, parsed[ItemProtectionFeature.KEY_DESTROY_ENABLED])
         assertEquals(listOf("explosion", "void"), parsed[ItemProtectionFeature.KEY_DESTROY_CAUSES])
+    }
+
+    @Test
+    fun `should preserve stations when any crafting is false`() {
+        val parsed = invokeParseMetaEffects(
+            mapOf(
+                "protection" to mapOf(
+                    "crafting" to mapOf(
+                        "any" to false,
+                        "stations" to listOf("crafting_table", "anvil")
+                    )
+                )
+            )
+        )
+
+        assertEquals(false, parsed[ItemProtectionFeature.KEY_CRAFTING_ANY])
+        assertEquals(listOf("CRAFTING", "ANVIL"), parsed[ItemProtectionFeature.KEY_CRAFTING_STATIONS])
+    }
+
+    @Test
+    fun `should parse cooldown cancelled trigger list`() {
+        val parsed = invokeParseMetaEffects(
+            mapOf(
+                "cooldown" to mapOf(
+                    "ticks" to 20,
+                    "apply-on-cancelled-triggers" to listOf("on_shoot", "right_click", "unknown")
+                )
+            )
+        )
+
+        assertEquals(20L, parsed["cooldown"])
+        assertEquals(listOf("shoot", "right_click"), parsed[ItemCooldownFeature.KEY_APPLY_ON_CANCELLED_TRIGGERS])
     }
 
     @Test
