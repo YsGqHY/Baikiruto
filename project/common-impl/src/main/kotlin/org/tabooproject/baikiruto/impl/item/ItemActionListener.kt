@@ -216,10 +216,11 @@ object ItemActionListener {
         val outcome = dispatch(managed, triggers, event.player, event)
         if (outcome.cancelled) {
             event.isCancelled = true
+            applyCooldownOnCancelled(managed, event.player, triggers)
             return
         }
         if (outcome.handled) {
-            ItemCooldownFeature.applyCooldown(managed.stream, event.player, triggers)
+            applyCooldownAfterDispatch(managed, event.player, triggers, event)
         }
         if (outcome.changed) {
             val itemStack = managed.stream.toItemStack()
@@ -255,10 +256,11 @@ object ItemActionListener {
         val outcome = dispatch(managed, triggers, event.player, event)
         if (outcome.cancelled) {
             event.isCancelled = true
+            applyCooldownOnCancelled(managed, event.player, triggers)
             return
         }
         if (outcome.handled) {
-            ItemCooldownFeature.applyCooldown(managed.stream, event.player, triggers)
+            applyCooldownAfterDispatch(managed, event.player, triggers, event)
         }
         if (outcome.changed) {
             event.player.inventory.setItemInMainHand(managed.stream.toItemStack())
@@ -287,10 +289,11 @@ object ItemActionListener {
         val outcome = dispatch(managed, triggers, player, event)
         if (outcome.cancelled) {
             event.isCancelled = true
+            applyCooldownOnCancelled(managed, player, triggers)
             return
         }
         if (outcome.handled) {
-            ItemCooldownFeature.applyCooldown(managed.stream, player, triggers)
+            applyCooldownAfterDispatch(managed, player, triggers, event)
         }
         if (outcome.changed) {
             player.inventory.setItemInMainHand(managed.stream.toItemStack())
@@ -409,10 +412,11 @@ object ItemActionListener {
         val outcome = dispatch(managed, triggers, event.player, event)
         if (outcome.cancelled) {
             event.isCancelled = true
+            applyCooldownOnCancelled(managed, event.player, triggers)
             return
         }
         if (outcome.handled) {
-            ItemCooldownFeature.applyCooldown(managed.stream, event.player, triggers)
+            applyCooldownAfterDispatch(managed, event.player, triggers, event)
         }
         if (outcome.changed) {
             val updated = managed.stream.toItemStack()
@@ -576,10 +580,19 @@ object ItemActionListener {
     fun onShoot(event: ProjectileLaunchEvent) {
         val shooter = event.entity.shooter as? Player ?: return
         val managed = resolve(shooter.inventory.itemInMainHand) ?: return
-        val outcome = dispatch(managed, listOf(ItemScriptTrigger.SHOOT), shooter, event)
-        if (outcome.cancelled) {
+        val triggers = listOf(ItemScriptTrigger.SHOOT)
+        if (ItemCooldownFeature.shouldBlock(managed.stream, shooter, triggers)) {
             event.isCancelled = true
             return
+        }
+        val outcome = dispatch(managed, triggers, shooter, event)
+        if (outcome.cancelled) {
+            event.isCancelled = true
+            applyCooldownOnCancelled(managed, shooter, triggers)
+            return
+        }
+        if (outcome.handled) {
+            applyCooldownAfterDispatch(managed, shooter, triggers, event)
         }
         if (outcome.changed) {
             shooter.inventory.setItemInMainHand(managed.stream.toItemStack())
@@ -901,6 +914,20 @@ object ItemActionListener {
             } ?: return@runCatching false
             method.invoke(player) as? Boolean ?: false
         }.getOrDefault(false)
+    }
+
+    private fun applyCooldownAfterDispatch(managed: ManagedItem, player: Player?, triggers: List<ItemScriptTrigger>, event: Any?) {
+        val cancellable = event as? Cancellable
+        if (cancellable?.isCancelled == true && !ItemCooldownFeature.shouldApplyOnCancelled(managed.stream, triggers)) {
+            return
+        }
+        ItemCooldownFeature.applyCooldown(managed.stream, player, triggers)
+    }
+
+    private fun applyCooldownOnCancelled(managed: ManagedItem, player: Player?, triggers: List<ItemScriptTrigger>) {
+        if (ItemCooldownFeature.shouldApplyOnCancelled(managed.stream, triggers)) {
+            ItemCooldownFeature.applyCooldown(managed.stream, player, triggers)
+        }
     }
 
     private fun dispatch(

@@ -10,9 +10,11 @@ import org.tabooproject.baikiruto.core.item.ItemGroup
 import org.tabooproject.baikiruto.core.item.ItemManager
 import org.tabooproject.baikiruto.core.item.ItemModel
 import org.tabooproject.baikiruto.core.item.ItemScriptHooks
+import org.tabooproject.baikiruto.core.item.ItemScriptTrigger
 import org.tabooproject.baikiruto.core.item.Meta
 import org.tabooproject.baikiruto.core.item.event.PluginReloadEvent
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
+import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDropEntityFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemProtectionFeature
@@ -1176,6 +1178,9 @@ object ItemDefinitionLoader {
                     stringValue(cooldown["cooldown_group"])?.let {
                         effects["use-cooldown-group"] = it
                     }
+                    parseCooldownApplyOnCancelledTriggers(cooldown).takeIf { it.isNotEmpty() }?.let {
+                        effects[ItemCooldownFeature.KEY_APPLY_ON_CANCELLED_TRIGGERS] = it
+                    }
                 }
                 "use_remainder" -> {
                     parseUseRemainder(rawValue).forEach { (key, value) ->
@@ -1356,6 +1361,9 @@ object ItemDefinitionLoader {
             if (cooldown.contains("by-player")) {
                 effects["cooldown-by-player"] = cooldown.getBoolean("by-player")
             }
+            parseCooldownApplyOnCancelledTriggers(sectionToMap(cooldown)).takeIf { it.isNotEmpty() }?.let {
+                effects[ItemCooldownFeature.KEY_APPLY_ON_CANCELLED_TRIGGERS] = it
+            }
         } else {
             val rawCooldown = section.get("cooldown")
             val ticks = when (rawCooldown) {
@@ -1486,6 +1494,9 @@ object ItemDefinitionLoader {
             }
             cooldown["by-player"]?.let { value ->
                 asBoolean(value)?.let { effects["cooldown-by-player"] = it }
+            }
+            parseCooldownApplyOnCancelledTriggers(cooldown).takeIf { it.isNotEmpty() }?.let {
+                effects[ItemCooldownFeature.KEY_APPLY_ON_CANCELLED_TRIGGERS] = it
             }
         } else {
             val ticks = numberValue(section["cooldown"])?.toLong()
@@ -1624,6 +1635,20 @@ object ItemDefinitionLoader {
             effects[ItemProtectionFeature.KEY_DESTROY_CAUSES] = causes
         }
         return effects
+    }
+
+    private fun parseCooldownApplyOnCancelledTriggers(source: Map<String, Any?>): List<String> {
+        return toStringList(
+            readAlias(
+                source,
+                "apply-on-cancelled-triggers",
+                "apply_on_cancelled_triggers",
+                "applyOnCancelledTriggers",
+                "cancelled-triggers",
+                "cancelled_triggers"
+            )
+        ).mapNotNull { ItemScriptTrigger.fromKey(it)?.key }
+            .distinct()
     }
 
     private fun readAlias(source: Map<String, Any?>, vararg aliases: String): Any? {

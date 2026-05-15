@@ -268,6 +268,8 @@ items:
       use_cooldown:
         seconds: 4.0
         cooldown_group: "baikiruto:example_weapon"
+        apply_on_cancelled_triggers:
+          - on_shoot
       use_remainder:
         id: "example:remainder"
         amount: 1

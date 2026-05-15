@@ -9,6 +9,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 object ItemCooldownFeature {
 
+    const val KEY_APPLY_ON_CANCELLED_TRIGGERS = "cooldown-apply-on-cancelled-triggers"
+
     private val playerCooldown = ConcurrentHashMap<UUID, ConcurrentHashMap<String, Long>>()
     // 硬阻断：冷却期间取消事件 + 不执行脚本
     private val blockingTriggers = setOf(
@@ -16,7 +18,8 @@ object ItemCooldownFeature {
         ItemScriptTrigger.INTERACT,
         ItemScriptTrigger.RIGHT_CLICK,
         ItemScriptTrigger.RIGHT_CLICK_ENTITY,
-        ItemScriptTrigger.CONSUME
+        ItemScriptTrigger.CONSUME,
+        ItemScriptTrigger.SHOOT
     )
 
     // 软阻断：冷却期间只跳过脚本执行，不取消底层事件（保留原版伤害等行为）
@@ -66,6 +69,14 @@ object ItemCooldownFeature {
             stream.setRuntimeData("cooldown-expire-at", expireAt)
         }
         stream.markSignal(ItemSignal.COOLDOWN_APPLIED)
+    }
+
+    fun shouldApplyOnCancelled(stream: ItemStream, triggers: Collection<ItemScriptTrigger>): Boolean {
+        val configured = configuredApplyOnCancelledTriggers(stream)
+        if (configured.isEmpty()) {
+            return false
+        }
+        return triggers.any { it in configured }
     }
 
     fun injectDisplayData(stream: ItemStream, player: Player?) {
@@ -132,5 +143,16 @@ object ItemCooldownFeature {
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
         return group ?: stream.itemId
+    }
+
+    private fun configuredApplyOnCancelledTriggers(stream: ItemStream): Set<ItemScriptTrigger> {
+        return when (val raw = stream.getRuntimeData(KEY_APPLY_ON_CANCELLED_TRIGGERS)) {
+            is Iterable<*> -> raw.mapNotNull { ItemScriptTrigger.fromKey(it?.toString().orEmpty()) }.toSet()
+            is Array<*> -> raw.mapNotNull { ItemScriptTrigger.fromKey(it?.toString().orEmpty()) }.toSet()
+            is String -> raw.split(',', ';', '|')
+                .mapNotNull { ItemScriptTrigger.fromKey(it) }
+                .toSet()
+            else -> emptySet()
+        }
     }
 }
