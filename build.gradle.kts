@@ -23,6 +23,9 @@ subprojects {
     configure<TabooLibExtension> {
         description {
             name(rootProject.name)
+            dependencies {
+                name("RoseLoot").optional(true)
+            }
         }
         env {
             install(Basic, Bukkit, BukkitUtil, BukkitNMS, BukkitNMSUtil, BukkitUI, BukkitHook)
@@ -35,7 +38,7 @@ subprojects {
             enableLegacyDependencyResolver = true
         }
         version {
-            taboolib = "6.3.0-5880b4c"
+            taboolib = "6.3.0-1675bf3"
         }
     }
 
@@ -43,6 +46,7 @@ subprojects {
     repositories {
         mavenCentral()
         maven("https://nexus.maplex.top/repository/maven-public/")
+        maven("https://repo.rosewooddev.io/repository/public/")
     }
     // 依赖
     dependencies {

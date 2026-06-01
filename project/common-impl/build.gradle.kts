@@ -18,6 +18,7 @@ dependencies {
     compileOnly("org.tabooproject.fluxon.plugin:common:$fluxonPluginVersion")
     compileOnly("org.tabooproject.fluxon.plugin:platform-bukkit:$fluxonPluginVersion")
     compileOnly("public:HeadDatabase:1.3.0")
+    compileOnly("dev.rosewood:roseloot:1.4.2")
     compileOnly("org.ow2.asm:asm:9.8")
     compileOnly("org.ow2.asm:asm-util:9.8")
     compileOnly("org.ow2.asm:asm-commons:9.8")
