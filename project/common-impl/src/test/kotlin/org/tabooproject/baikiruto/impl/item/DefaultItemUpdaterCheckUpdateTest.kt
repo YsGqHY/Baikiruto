@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.AfterEach
 import org.tabooproject.baikiruto.core.Baikiruto
 import org.tabooproject.baikiruto.core.BaikirutoAPI
 import org.tabooproject.baikiruto.core.BaikirutoScriptHandler
@@ -32,6 +33,11 @@ import org.tabooproject.baikiruto.impl.item.event.DefaultItemEventBus
 import java.util.concurrent.atomic.AtomicInteger
 
 class DefaultItemUpdaterCheckUpdateTest {
+
+    @AfterEach
+    fun resetStatePreserver() {
+        DefaultItemUpdater.resetStatePreserverForTesting()
+    }
 
     @Test
     fun `should skip update by default when item is not outdated`() {
@@ -133,6 +139,38 @@ class DefaultItemUpdaterCheckUpdateTest {
             val result = DefaultItemUpdater.checkUpdate(null, origin)
             assertEquals(Material.DIAMOND, result.type)
             assertEquals(32, result.amount)
+            assertTrue(buildCount.get() >= 2)
+        } finally {
+            restoreApi(previous)
+        }
+    }
+
+    @Test
+    fun `should apply state preserver result after rebuild update`() {
+        val origin = ItemStack(Material.STONE).apply { amount = 16 }
+        val sourceStream = TestStream("test:item", "old", origin)
+        val rebuiltStream = TestStream("test:item", "new", ItemStack(Material.DIAMOND))
+        val buildCount = AtomicInteger(0)
+        val item = TestItem("test:item", rebuiltStream, buildCount)
+        val preserveCount = AtomicInteger(0)
+        DefaultItemUpdater.installStatePreserverForTesting(
+            ItemUpdateStatePreserver { source, rebuilt, _ ->
+                preserveCount.incrementAndGet()
+                assertSame(origin, source)
+                assertEquals(Material.DIAMOND, rebuilt.type)
+                rebuilt.clone().apply {
+                    type = Material.EMERALD
+                    amount = 1
+                }
+            }
+        )
+
+        val previous = installApi(TestApi(sourceStream, item))
+        try {
+            val result = DefaultItemUpdater.checkUpdate(null, origin)
+            assertEquals(1, preserveCount.get())
+            assertEquals(Material.EMERALD, result.type)
+            assertEquals(16, result.amount)
             assertTrue(buildCount.get() >= 2)
         } finally {
             restoreApi(previous)

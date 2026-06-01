@@ -61,6 +61,12 @@ operations:
     head-database:
       # Enable optional HeadDatabase skull hook.
       enabled: true
+    guibind-pro:
+      # Preserve GuibindPro binding, unbound, and recovery tags when Baikiruto refreshes item display on reload.
+      enabled: true
+    rose-loot:
+      # Register RoseLoot loot item type "baikiruto" dynamically when RoseLoot is installed.
+      enabled: true
 
 database:
   # Enable MySQL player data storage. false = use SQLite file.

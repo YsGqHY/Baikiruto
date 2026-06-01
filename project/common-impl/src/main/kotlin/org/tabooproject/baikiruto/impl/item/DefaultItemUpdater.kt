@@ -10,9 +10,23 @@ import org.tabooproject.baikiruto.core.item.ItemStream
 import org.tabooproject.baikiruto.core.item.ItemUpdater
 import org.tabooproject.baikiruto.core.item.event.ItemCheckUpdateEvent
 import org.tabooproject.baikiruto.core.item.event.ItemUpdateEvent
+import org.tabooproject.baikiruto.impl.hook.GuibindProHook
 import taboolib.platform.util.isAir
 
 object DefaultItemUpdater : ItemUpdater {
+
+    @Volatile
+    private var statePreserver: ItemUpdateStatePreserver = GuibindProHook
+
+    internal fun installStatePreserverForTesting(preserver: ItemUpdateStatePreserver): ItemUpdateStatePreserver {
+        val previous = statePreserver
+        statePreserver = preserver
+        return previous
+    }
+
+    internal fun resetStatePreserverForTesting() {
+        statePreserver = GuibindProHook
+    }
 
     override fun checkUpdate(player: Player?, inventory: Inventory): Int {
         var updated = 0
@@ -62,7 +76,10 @@ object DefaultItemUpdater : ItemUpdater {
         val rebuiltStack = rebuiltStream.toItemStack().apply {
             amount = itemStack.amount.coerceAtLeast(1)
         }
-        return true to rebuiltStack
+        val preservedStack = statePreserver.preserve(itemStack, rebuiltStack, player).apply {
+            amount = itemStack.amount.coerceAtLeast(1)
+        }
+        return true to preservedStack
     }
 
     private fun currentVersionHash(item: Item): String {

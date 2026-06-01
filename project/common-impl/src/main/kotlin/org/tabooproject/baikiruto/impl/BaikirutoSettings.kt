@@ -94,6 +94,12 @@ object BaikirutoSettings {
     @ConfigNode("operations.hook.head-database.enabled")
     var headDatabaseHookEnabled = true
 
+    @ConfigNode("operations.hook.guibind-pro.enabled")
+    var guibindProHookEnabled = true
+
+    @ConfigNode("operations.hook.rose-loot.enabled")
+    var roseLootHookEnabled = true
+
     @ConfigNode("database.enabled")
     var databaseEnabled = false
 
@@ -133,8 +139,8 @@ object BaikirutoSettings {
             console().sendLang(
                 "log-config-reloaded",
                 debug, scriptPreheatEnabled, watcherEnabled, reloadOnlineUpdateEnabled,
-                mythicHookEnabled, attributePlusHookEnabled, headDatabaseHookEnabled, databaseEnabled,
-                miniMessageEnabled, LegacyTextColorizer.miniMessageAvailable()
+                mythicHookEnabled, attributePlusHookEnabled, headDatabaseHookEnabled, guibindProHookEnabled,
+                roseLootHookEnabled, databaseEnabled, miniMessageEnabled, LegacyTextColorizer.miniMessageAvailable()
             )
         }
     }
