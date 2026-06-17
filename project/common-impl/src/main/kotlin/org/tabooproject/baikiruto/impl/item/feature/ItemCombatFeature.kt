@@ -77,6 +77,7 @@ object ItemCombatFeature {
             "fall" -> cause == "fall" || cause == "fly_into_wall"
             "magic" -> cause == "magic" || cause == "poison" || cause == "wither"
             "out_of_world" -> cause == "void"
+            "contact", "cactus", "sweet_berry_bush", "sweet_berry_bushes", "berry_bush" -> cause == "contact"
             else -> false
         }
     }

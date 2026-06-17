@@ -15,6 +15,7 @@ import org.bukkit.event.inventory.InventoryMoveItemEvent
 import org.bukkit.event.inventory.InventoryPickupItemEvent
 import org.bukkit.event.inventory.PrepareItemCraftEvent
 import org.bukkit.event.player.PlayerArmorStandManipulateEvent
+import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import org.tabooproject.baikiruto.core.Baikiruto
@@ -37,16 +38,18 @@ object ItemProtectionListener {
 
     @SubscribeEvent
     fun onPrepareCraft(event: PrepareItemCraftEvent) {
-        if (event.inventory.matrix.any { stack -> blocksCrafting(stack, "CRAFTING") }) {
+        val vanillaRecipe = isVanillaRecipe(event.recipe)
+        if (event.inventory.matrix.any { stack -> blocksCrafting(stack, "CRAFTING", vanillaRecipe) }) {
             event.inventory.result = null
         }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun onCraft(event: CraftItemEvent) {
-        if (event.inventory.matrix.any { stack -> blocksCrafting(stack, "CRAFTING") } ||
-            blocksCrafting(event.currentItem, "CRAFTING") ||
-            blocksCrafting(event.cursor, "CRAFTING")
+        val vanillaRecipe = isVanillaRecipe(event.recipe)
+        if (event.inventory.matrix.any { stack -> blocksCrafting(stack, "CRAFTING", vanillaRecipe) } ||
+            blocksCrafting(event.currentItem, "CRAFTING", vanillaRecipe) ||
+            blocksCrafting(event.cursor, "CRAFTING", vanillaRecipe)
         ) {
             cancel(event, event.whoClicked as? Player)
         }
@@ -98,6 +101,18 @@ object ItemProtectionListener {
     fun onArmorStandManipulate(event: PlayerArmorStandManipulateEvent) {
         val stream = read(event.playerItem) ?: return
         if (ItemProtectionFeature.blocksContainer(stream, "ARMOR_STAND")) {
+            event.isCancelled = true
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    fun onDecoratedPotInteract(event: PlayerInteractEvent) {
+        val blockType = event.clickedBlock?.type?.name ?: return
+        if (blockType != "DECORATED_POT") {
+            return
+        }
+        val stream = read(event.item) ?: return
+        if (ItemProtectionFeature.blocksContainer(stream, "DECORATED_POT")) {
             event.isCancelled = true
         }
     }
@@ -162,9 +177,11 @@ object ItemProtectionListener {
         }
     }
 
-    private fun blocksCrafting(itemStack: ItemStack?, station: String): Boolean {
+    private fun blocksCrafting(itemStack: ItemStack?, station: String, vanillaRecipe: Boolean): Boolean {
         val stream = read(itemStack) ?: return false
-        return ItemProtectionFeature.blocksVanillaCrafting(stream) || ItemProtectionFeature.blocksStation(stream, station)
+        return ItemProtectionFeature.blocksAnyCrafting(stream) ||
+            (vanillaRecipe && ItemProtectionFeature.blocksVanillaCrafting(stream)) ||
+            ItemProtectionFeature.blocksStation(stream, station)
     }
 
     private fun blocksTopTarget(itemStack: ItemStack?, target: String): Boolean {
@@ -181,6 +198,37 @@ object ItemProtectionListener {
 
     private fun inventoryTypeName(inventory: Inventory): String {
         return inventory.type.name
+    }
+
+    private fun isVanillaRecipe(recipe: Any?): Boolean {
+        if (recipe == null) {
+            return true
+        }
+        val key = try {
+            val method = recipe.javaClass.methods.firstOrNull { candidate ->
+                candidate.name == "getKey" && candidate.parameterCount == 0
+            } ?: return true
+            method.invoke(recipe)
+        } catch (_: ReflectiveOperationException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        } ?: return true
+        val namespace = try {
+            val method = key.javaClass.methods.firstOrNull { candidate ->
+                candidate.name == "getNamespace" && candidate.parameterCount == 0
+            }
+            method?.invoke(key)?.toString()
+        } catch (_: ReflectiveOperationException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        } ?: recipeNamespaceFallback(key)
+        return namespace.equals("minecraft", ignoreCase = true)
+    }
+
+    private fun recipeNamespaceFallback(key: Any): String {
+        return key.toString().substringBefore(":", "minecraft")
     }
 
     private fun isTopSlot(rawSlot: Int, topInventory: Inventory): Boolean {
