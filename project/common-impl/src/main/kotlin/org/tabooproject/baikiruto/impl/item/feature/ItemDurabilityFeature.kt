@@ -113,13 +113,25 @@ object ItemDurabilityFeature {
     }
 
     private fun syncVanillaDamage(stream: DefaultItemStream, current: Int, max: Int) {
-        val vanillaMax = stream.itemStack().type.maxDurability.toInt()
-        if (vanillaMax <= 0) {
-            return
-        }
+        val vanillaMax = stream.itemStack().type.maxDurability.toInt().takeIf { it > 0 } ?: max
         val percent = current.toDouble() / max.toDouble()
         val damage = (vanillaMax.toDouble() * (1.0 - percent)).roundToInt().coerceIn(0, vanillaMax)
         stream.setRuntimeData("damage", damage)
+        syncComponentDamage(stream, damage, vanillaMax)
+    }
+
+    private fun syncComponentDamage(stream: DefaultItemStream, damage: Int, maxDamage: Int) {
+        val components = mutableMapOf<String, Any?>()
+        val existing = stream.getRuntimeData("components")
+        if (existing is Map<*, *>) {
+            existing.forEach { (key, value) ->
+                val normalizedKey = key?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+                components[normalizedKey] = value
+            }
+        }
+        components["damage"] = damage
+        components["max_damage"] = maxDamage
+        stream.setRuntimeData("components", components.toMap())
     }
 
     private fun intValue(value: Any?): Int? {
