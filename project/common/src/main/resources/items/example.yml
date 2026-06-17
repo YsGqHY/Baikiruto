@@ -59,9 +59,11 @@ items:
           return current.toString() + "/" + max.toString()
     effects:
       glow: true
-      item-flags:
-        - HIDE_ENCHANTS
-        - HIDE_ATTRIBUTES
+      itemflags:
+        - hide_enchantments
+        - hide_attributes
+        - hide_additional_tooltip
+        - hide_dye
     i18n:
       en_us:
         name:
@@ -200,6 +202,8 @@ items:
           drop: |
             return item
     meta:
+      update:
+        preserve-enchantments: true
       durability:
         synchronous: true
         remains: "example:remainder"
@@ -281,6 +285,7 @@ items:
         enabled: true
         types:
           - "projectile"
+          - "contact"
       death_protection:
         enabled: true
         health: 4.0
@@ -306,22 +311,30 @@ items:
         display-visible: true
       protection:
         crafting:
-          any: true
+          vanilla: true
+          any: false
           stations:
+            - CRAFTING
+            - STONECUTTER
+            - ENCHANTING
             - ANVIL
             - GRINDSTONE
             - SMITHING
+            - CRAFTER
         containers:
           deny:
             - HOPPER
             - FURNACE
+            - DECORATED_POT
             - ARMOR_STAND
+            - CRAFTER
         destroy:
           enabled: true
           causes:
             - fire
             - lava
-            - cactus
+            - contact
+            - sweet_berry_bush
             - lightning
 
   "example:remainder":
@@ -351,6 +364,7 @@ items:
         types:
           - "fire"
           - "explosion"
+          - "sweet_berry_bush"
       death_protection:
         enabled: true
         health: 10.0
@@ -466,6 +480,7 @@ items:
         enabled: true
         types:
           - "fall"
+          - "cactus"
       rarity: "uncommon"
       custom_data:
         baikiruto:
