@@ -38,15 +38,18 @@ object ComponentConfigParser {
     fun parseTextList(source: Any?): List<String> {
         return when (source) {
             null -> emptyList()
-            is String -> parseText(source)?.let(::listOf) ?: emptyList()
+            is String -> listOf(parseTextString(source) ?: source.trim())
             is Map<*, *> -> parseTextList(source)
-            is Iterable<*> -> source.mapNotNull(::parseText)
+            is Iterable<*> -> source.mapNotNull(::parseTextListEntry)
             else -> parseText(source)?.let(::listOf) ?: emptyList()
         }
     }
 
     private fun parseTextString(source: String): String? {
-        val raw = source.trim().takeIf { it.isNotEmpty() } ?: return null
+        val raw = source.trim()
+        if (raw.isEmpty()) {
+            return ""
+        }
         if (!raw.startsWith("{") || !raw.endsWith("}")) {
             return raw
         }
@@ -103,7 +106,8 @@ object ComponentConfigParser {
             ?: normalized["lore"]
             ?: normalized["value"]
         val list = when (listSource) {
-            is Iterable<*> -> listSource.mapNotNull(::parseText)
+            is Iterable<*> -> listSource.mapNotNull(::parseTextListEntry)
+            is String -> listOf(parseTextString(listSource) ?: listSource.trim())
             null -> emptyList()
             else -> parseText(listSource)?.let(::listOf) ?: emptyList()
         }
@@ -147,6 +151,14 @@ object ComponentConfigParser {
             .replace("\\t", "\t")
             .replace("\\\"", "\"")
             .replace("\\\\", "\\")
+    }
+
+    private fun parseTextListEntry(source: Any?): String? {
+        return when (source) {
+            null -> null
+            is String -> parseTextString(source) ?: source.trim()
+            else -> parseText(source)
+        }
     }
 
     private fun stringValue(source: Any?): String? {

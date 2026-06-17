@@ -753,7 +753,7 @@ class DefaultItemStream(
     private fun toStringList(source: Any?): List<String> {
         return when (source) {
             null -> emptyList()
-            is String -> source.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+            is String -> source.split('\n').map { it.trim() }
             is Iterable<*> -> source.flatMap { toStringList(it) }
             else -> listOf(source.toString())
         }
