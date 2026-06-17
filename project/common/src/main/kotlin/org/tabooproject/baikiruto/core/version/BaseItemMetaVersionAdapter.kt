@@ -261,18 +261,43 @@ abstract class BaseItemMetaVersionAdapter {
 
     protected open fun applyItemFlags(itemMeta: ItemMeta, rawFlags: Any?) {
         val flags = stringList(rawFlags)
-            .mapNotNull { name ->
-                val normalized = name.uppercase(Locale.ENGLISH).replace('-', '_')
+            .flatMap(::itemFlagCandidates)
+            .distinct()
+            .mapNotNull { candidate ->
                 try {
-                    ItemFlag.valueOf(normalized)
+                    ItemFlag.valueOf(candidate)
                 } catch (_: IllegalArgumentException) {
                     null
                 }
             }
+            .distinct()
             .toTypedArray()
         if (flags.isNotEmpty()) {
             itemMeta.addItemFlags(*flags)
         }
+    }
+
+    private fun itemFlagCandidates(name: String): List<String> {
+        val token = name.trim()
+            .uppercase(Locale.ENGLISH)
+            .replace('-', '_')
+            .replace(' ', '_')
+            .substringAfter(':')
+        val base = token.removePrefix("HIDE_")
+        val aliases = when (base) {
+            "ENCHANT", "ENCHANTS", "ENCHANTMENT", "ENCHANTMENTS" -> listOf("HIDE_ENCHANTS", "HIDE_ENCHANTMENTS")
+            "ATTRIBUTE", "ATTRIBUTES", "ATTRIBUTE_MODIFIER", "ATTRIBUTE_MODIFIERS" -> listOf("HIDE_ATTRIBUTES", "HIDE_ATTRIBUTE_MODIFIERS")
+            "UNBREAKABLE" -> listOf("HIDE_UNBREAKABLE")
+            "DESTROYS", "CAN_DESTROY", "CAN_BREAK", "BREAKS" -> listOf("HIDE_DESTROYS", "HIDE_CAN_DESTROY", "HIDE_CAN_BREAK")
+            "PLACED_ON", "CAN_PLACE_ON", "PLACE_ON" -> listOf("HIDE_PLACED_ON", "HIDE_CAN_PLACE_ON")
+            "POTION_EFFECT", "POTION_EFFECTS", "ADDITIONAL", "ADDITIONAL_TOOLTIP" -> listOf("HIDE_POTION_EFFECTS", "HIDE_ADDITIONAL_TOOLTIP")
+            "DYE", "DYES", "DYED_COLOR", "COLOR" -> listOf("HIDE_DYE", "HIDE_DYES", "HIDE_DYED_COLOR")
+            "ARMOR_TRIM", "TRIM" -> listOf("HIDE_ARMOR_TRIM", "HIDE_TRIM")
+            "TOOLTIP", "HIDE_TOOLTIP" -> listOf("HIDE_TOOLTIP")
+            "USAGE", "USE", "USES" -> listOf("HIDE_USAGE", "HIDE_USE")
+            else -> listOf(token, if (token.startsWith("HIDE_")) token else "HIDE_$token")
+        }
+        return (listOf(token) + aliases).distinct()
     }
 
     protected open fun applyColor(itemMeta: ItemMeta, rgb: Int) {

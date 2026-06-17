@@ -4,7 +4,10 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import org.bukkit.NamespacedKey
 import org.bukkit.inventory.ItemStack
+import org.bukkit.persistence.PersistentDataContainer
+import org.bukkit.persistence.PersistentDataType
 import taboolib.common.platform.function.warning
 import java.util.Locale
 
@@ -38,6 +41,7 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         val componentsData = runtimeData["components"] as? Map<*, *> ?: return
         val wrapper = getOrCreateWrapper(itemStack)
 
+        var publicBukkitValues: Any? = null
         componentsData.forEach { (key, value) ->
             if (key == null || value == null) return@forEach
             val componentKey = canonicalComponentKey(key.toString()) ?: return@forEach
@@ -47,9 +51,10 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
 
             try {
                 when (componentKey) {
-                    "minecraft:custom_data" -> applyCustomData(wrapper, value)
+                    "minecraft:custom_data" -> publicBukkitValues = applyCustomData(wrapper, value) ?: publicBukkitValues
                     "minecraft:unbreakable" -> applyUnbreakableComponent(wrapper, value)
                     "minecraft:glider" -> applyUnitToggleComponent(wrapper, componentKey, value)
+                    "minecraft:hide_tooltip", "minecraft:hide_additional_tooltip" -> applyUnitToggleComponent(wrapper, componentKey, value)
                     "minecraft:damage_resistant" -> applyDamageResistantComponent(wrapper, value)
                     else -> applyNormalizedComponent(wrapper, componentKey, value)
                 }
@@ -58,6 +63,7 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
                 warning("[Baikiruto][COMPONENT_APPLY_FAILED] $componentKey -> ${ex.message}")
             }
         }
+        applyPublicBukkitValues(itemStack, publicBukkitValues)
     }
 
     private fun applyNormalizedComponent(wrapper: ComponentItemWrapper, componentKey: String, value: Any) {
@@ -82,30 +88,58 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
     @Suppress("UNUSED_PARAMETER")
     private fun shouldPreserveLegacyDisplay(runtimeData: Map<String, Any?>, componentKey: String): Boolean = false
 
-    private fun applyCustomData(wrapper: ComponentItemWrapper, value: Any) {
-        val source = value as? Map<*, *> ?: return
+    private fun applyCustomData(wrapper: ComponentItemWrapper, value: Any): Any? {
+        val source = value as? Map<*, *> ?: return null
         val incoming = linkedMapOf<String, Any?>()
         source.forEach { (rawKey, rawValue) ->
             val key = rawKey?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
             incoming[key] = rawValue
         }
         if (incoming.isEmpty()) {
+            return null
+        }
+        val publicBukkitValues = incoming.entries.firstOrNull { (key, _) -> isPublicBukkitValuesKey(key) }?.value
+        val componentIncoming = incoming.filterKeys { key -> !isPublicBukkitValuesKey(key) }
+        if (componentIncoming.isNotEmpty()) {
+            // 与已有 custom_data 合并而非替换，避免覆盖 ItemStreamTransport.sync() 写入的 baikiruto 运行时数据
+            val existing = wrapper.getCustomDataMap()
+            if (existing != null && existing.isNotEmpty()) {
+                val merged = linkedMapOf<String, Any?>()
+                existing.forEach { (k, v) -> merged[k.toString()] = v }
+                componentIncoming.forEach { (k, v) ->
+                    // 不覆盖 baikiruto 命名空间（由 sync() 管理）
+                    if (k != "baikiruto") {
+                        merged[k] = v
+                    }
+                }
+                wrapper.setComponent("minecraft:custom_data", merged)
+            } else {
+                wrapper.setComponent("minecraft:custom_data", componentIncoming)
+            }
+        }
+        return publicBukkitValues
+    }
+
+    private fun isPublicBukkitValuesKey(key: String): Boolean {
+        return key.equals("PublicBukkitValues", ignoreCase = true)
+    }
+
+    private fun applyPublicBukkitValues(itemStack: ItemStack, value: Any?) {
+        val values = value as? Map<*, *> ?: return
+        if (values.isEmpty()) {
             return
         }
-        // 与已有 custom_data 合并而非替换，避免覆盖 ItemStreamTransport.sync() 写入的 baikiruto 运行时数据
-        val existing = wrapper.getCustomDataMap()
-        if (existing != null && existing.isNotEmpty()) {
-            val merged = linkedMapOf<String, Any?>()
-            existing.forEach { (k, v) -> merged[k.toString()] = v }
-            incoming.forEach { (k, v) ->
-                // 不覆盖 baikiruto 命名空间（由 sync() 管理）
-                if (k != "baikiruto") {
-                    merged[k] = v
-                }
-            }
-            wrapper.setComponent("minecraft:custom_data", merged)
-        } else {
-            wrapper.setComponent("minecraft:custom_data", incoming)
+        val itemMeta = itemStack.itemMeta ?: return
+        val container = itemMeta.persistentDataContainer
+        var changed = false
+        values.forEach { (rawKey, rawValue) ->
+            val key = persistentDataKey(rawKey?.toString()) ?: return@forEach
+            val persistentValue = parsePersistentCustomDataValue(key, rawValue) ?: return@forEach
+            applyPersistentCustomDataValue(container, key, persistentValue)
+            changed = true
+        }
+        if (changed) {
+            itemStack.itemMeta = itemMeta
         }
     }
 
@@ -123,21 +157,24 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
     }
 
     private fun applyUnitToggleComponent(wrapper: ComponentItemWrapper, componentKey: String, value: Any) {
-        when (value) {
-            is Boolean -> {
-                if (value) {
-                    wrapper.setComponent(componentKey, emptyMap<String, Any>())
-                } else {
-                    wrapper.removeComponent(componentKey)
-                }
+        val boolean = booleanValue(value)
+        if (boolean != null) {
+            if (boolean) {
+                wrapper.setComponent(componentKey, emptyMap<String, Any>())
+            } else {
+                wrapper.removeComponent(componentKey)
             }
-            else -> wrapper.setComponent(componentKey, value)
+            return
         }
+        wrapper.setComponent(componentKey, value)
     }
 
     private fun applyDamageResistantComponent(wrapper: ComponentItemWrapper, value: Any) {
-        if (value is Boolean && !value) {
-            wrapper.removeComponent("minecraft:damage_resistant")
+        val enabled = booleanValue(value)
+        if (enabled != null) {
+            if (!enabled) {
+                wrapper.removeComponent("minecraft:damage_resistant")
+            }
             return
         }
         applyNormalizedComponent(wrapper, "minecraft:damage_resistant", value)
@@ -172,7 +209,7 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
                 listOfNotNull(normalizeUseRemainder(value))
             }
             "minecraft:damage_resistant" -> {
-                listOfNotNull(normalizeDamageResistant(value))
+                normalizeDamageResistantCandidates(value)
             }
             "minecraft:potion_contents" -> {
                 listOfNotNull(normalizePotionContents(value))
@@ -417,32 +454,33 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         }
     }
 
-    private fun normalizeDamageResistant(source: Any): Any? {
-        val normalizedTag = when (source) {
-            is String -> normalizeDamageTag(source)
-            is Iterable<*> -> source.firstNotNullOfOrNull { entry ->
-                entry?.toString()?.let(::normalizeDamageTag)
+    private fun normalizeDamageResistantCandidates(source: Any): List<Any> {
+        val tags = extractDamageTags(source)
+        return tags.map { tag -> linkedMapOf("types" to tag) }
+    }
+
+    private fun extractDamageTags(source: Any): List<String> {
+        return when (source) {
+            is String -> normalizeDamageTagCandidates(source)
+            is Iterable<*> -> source.flatMap { entry ->
+                entry?.toString()?.let(::normalizeDamageTagCandidates).orEmpty()
             }
             is Map<*, *> -> {
                 val enabled = booleanValue(source["enabled"]) ?: true
                 if (!enabled) {
-                    return null
+                    return emptyList()
                 }
                 val types = source["types"] ?: source["damage_types"]
                 when (types) {
-                    is String -> normalizeDamageTag(types)
-                    is Iterable<*> -> types.firstNotNullOfOrNull { entry ->
-                        entry?.toString()?.let(::normalizeDamageTag)
+                    is String -> normalizeDamageTagCandidates(types)
+                    is Iterable<*> -> types.flatMap { entry ->
+                        entry?.toString()?.let(::normalizeDamageTagCandidates).orEmpty()
                     }
-                    else -> null
+                    else -> emptyList()
                 }
             }
-            else -> null
-        } ?: return null
-
-        return linkedMapOf(
-            "types" to normalizedTag
-        )
+            else -> emptyList()
+        }.distinct()
     }
 
     /**
@@ -563,16 +601,24 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         }
     }
 
-    private fun normalizeDamageTag(source: String): String? {
+    private fun normalizeDamageTagCandidates(source: String): List<String> {
         val trimmed = source.trim().lowercase(Locale.ENGLISH)
         if (trimmed.isEmpty()) {
-            return null
+            return emptyList()
         }
         if (trimmed.startsWith("#")) {
             val id = trimmed.substring(1)
-            return "#${if (':' in id) id else "minecraft:$id"}"
+            return listOf("#${if (':' in id) id else "minecraft:$id"}")
         }
         val token = trimmed.substringAfter(':').replace('-', '_')
+        if (token in setOf("contact", "cactus", "sweet_berry_bush", "sweet_berry_bushes", "berry_bush")) {
+            return listOf(
+                "#minecraft:is_contact",
+                "#minecraft:contact",
+                "minecraft:cactus",
+                "minecraft:sweet_berry_bush"
+            )
+        }
         val normalized = when (token) {
             "projectile" -> "is_projectile"
             "fire" -> "is_fire"
@@ -584,7 +630,7 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
             "freeze", "freezing" -> "is_freezing"
             else -> if (token.startsWith("is_")) token else "is_$token"
         }
-        return "#minecraft:$normalized"
+        return listOf("#minecraft:$normalized")
     }
 
     private fun numberValue(source: Any?): Number? {
@@ -593,6 +639,105 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
             is String -> source.trim().toDoubleOrNull()
             else -> null
         }
+    }
+
+    private fun persistentDataKey(source: String?): NamespacedKey? {
+        val normalized = source?.trim()?.lowercase(Locale.ENGLISH)?.takeIf { it.isNotEmpty() } ?: return null
+        val split = normalized.split(':', limit = 2)
+        if (split.size != 2 || split[0].isBlank() || split[1].isBlank()) {
+            return null
+        }
+        return NamespacedKey(split[0], split[1])
+    }
+
+    private fun parsePersistentCustomDataValue(key: NamespacedKey, source: Any?): PersistentCustomDataValue? {
+        return when (source) {
+            null -> null
+            is Boolean -> PersistentCustomDataValue.ByteValue(if (source) 1 else 0)
+            is Byte -> PersistentCustomDataValue.ByteValue(source.toInt())
+            is Short -> PersistentCustomDataValue.ShortValue(source.toInt())
+            is Int -> if (shouldTreatIntegerAsByte(key, source)) {
+                PersistentCustomDataValue.ByteValue(source)
+            } else {
+                PersistentCustomDataValue.IntValue(source)
+            }
+            is Long -> PersistentCustomDataValue.LongValue(source)
+            is Float -> PersistentCustomDataValue.FloatValue(source)
+            is Double -> PersistentCustomDataValue.DoubleValue(source)
+            is Number -> PersistentCustomDataValue.IntValue(source.toInt())
+            is String -> parsePersistentCustomDataString(key, source)
+            is Map<*, *> -> parsePersistentCustomDataMap(source)
+            else -> PersistentCustomDataValue.StringValue(source.toString())
+        }
+    }
+
+    private fun shouldTreatIntegerAsByte(key: NamespacedKey, value: Int): Boolean {
+        return value in 0..1 && key.namespace == "cmilib" && key.key == "cmirainbowarmor"
+    }
+
+    private fun parsePersistentCustomDataMap(source: Map<*, *>): PersistentCustomDataValue? {
+        val type = source["type"]?.toString()?.trim()?.lowercase(Locale.ENGLISH)?.replace('-', '_')
+            ?: return null
+        val value = source["value"] ?: source["data"] ?: source["val"] ?: return null
+        return when (type) {
+            "byte" -> numberValue(value)?.toInt()?.let { PersistentCustomDataValue.ByteValue(it) }
+            "short" -> numberValue(value)?.toInt()?.let { PersistentCustomDataValue.ShortValue(it) }
+            "int", "integer" -> numberValue(value)?.toInt()?.let { PersistentCustomDataValue.IntValue(it) }
+            "long" -> numberValue(value)?.toLong()?.let { PersistentCustomDataValue.LongValue(it) }
+            "float" -> numberValue(value)?.toFloat()?.let { PersistentCustomDataValue.FloatValue(it) }
+            "double" -> numberValue(value)?.toDouble()?.let { PersistentCustomDataValue.DoubleValue(it) }
+            "string" -> value.toString().let { PersistentCustomDataValue.StringValue(it) }
+            "boolean", "bool" -> booleanValue(value)?.let { PersistentCustomDataValue.ByteValue(if (it) 1 else 0) }
+            else -> null
+        }
+    }
+
+    private fun parsePersistentCustomDataString(key: NamespacedKey, source: String): PersistentCustomDataValue? {
+        val trimmed = source.trim()
+        if (trimmed.isEmpty()) {
+            return null
+        }
+        booleanValue(trimmed)?.let { return PersistentCustomDataValue.ByteValue(if (it) 1 else 0) }
+        val suffix = trimmed.last().lowercaseChar()
+        val body = trimmed.dropLast(1).trim()
+        return when (suffix) {
+            'b' -> body.toIntOrNull()?.let { PersistentCustomDataValue.ByteValue(it) }
+            's' -> body.toIntOrNull()?.let { PersistentCustomDataValue.ShortValue(it) }
+            'l' -> body.toLongOrNull()?.let { PersistentCustomDataValue.LongValue(it) }
+            'f' -> body.toFloatOrNull()?.let { PersistentCustomDataValue.FloatValue(it) }
+            'd' -> body.toDoubleOrNull()?.let { PersistentCustomDataValue.DoubleValue(it) }
+            else -> trimmed.toIntOrNull()?.let { value ->
+                if (shouldTreatIntegerAsByte(key, value)) PersistentCustomDataValue.ByteValue(value) else PersistentCustomDataValue.IntValue(value)
+            } ?: trimmed.toLongOrNull()?.let { PersistentCustomDataValue.LongValue(it) }
+                ?: trimmed.toDoubleOrNull()?.let { PersistentCustomDataValue.DoubleValue(it) }
+                ?: PersistentCustomDataValue.StringValue(trimmed)
+        }
+    }
+
+    private fun applyPersistentCustomDataValue(
+        container: PersistentDataContainer,
+        key: NamespacedKey,
+        value: PersistentCustomDataValue
+    ) {
+        when (value) {
+            is PersistentCustomDataValue.ByteValue -> container.set(key, PersistentDataType.BYTE, value.value.toByte())
+            is PersistentCustomDataValue.ShortValue -> container.set(key, PersistentDataType.SHORT, value.value.toShort())
+            is PersistentCustomDataValue.IntValue -> container.set(key, PersistentDataType.INTEGER, value.value)
+            is PersistentCustomDataValue.LongValue -> container.set(key, PersistentDataType.LONG, value.value)
+            is PersistentCustomDataValue.FloatValue -> container.set(key, PersistentDataType.FLOAT, value.value)
+            is PersistentCustomDataValue.DoubleValue -> container.set(key, PersistentDataType.DOUBLE, value.value)
+            is PersistentCustomDataValue.StringValue -> container.set(key, PersistentDataType.STRING, value.value)
+        }
+    }
+
+    private sealed class PersistentCustomDataValue {
+        data class ByteValue(val value: Int) : PersistentCustomDataValue()
+        data class ShortValue(val value: Int) : PersistentCustomDataValue()
+        data class IntValue(val value: Int) : PersistentCustomDataValue()
+        data class LongValue(val value: Long) : PersistentCustomDataValue()
+        data class FloatValue(val value: Float) : PersistentCustomDataValue()
+        data class DoubleValue(val value: Double) : PersistentCustomDataValue()
+        data class StringValue(val value: String) : PersistentCustomDataValue()
     }
 
     private fun canonicalComponentKey(source: String): String? {
