@@ -76,7 +76,10 @@ object DefaultItemUpdater : ItemUpdater {
         val rebuiltStack = rebuiltStream.toItemStack().apply {
             amount = itemStack.amount.coerceAtLeast(1)
         }
-        val preservedStack = statePreserver.preserve(itemStack, rebuiltStack, player).apply {
+        val enchantPreservedStack = ItemEnchantPreserver.preserveIfEnabled(itemStack, rebuiltStack, rebuiltStream).apply {
+            amount = itemStack.amount.coerceAtLeast(1)
+        }
+        val preservedStack = statePreserver.preserve(itemStack, enchantPreservedStack, player).apply {
             amount = itemStack.amount.coerceAtLeast(1)
         }
         return true to preservedStack
