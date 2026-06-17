@@ -20,6 +20,11 @@ class LegacyTextColorizerTest {
     }
 
     @Test
+    fun `should keep empty lore line unchanged`() {
+        assertEquals(listOf(""), LegacyTextColorizer.colorize(listOf("")))
+    }
+
+    @Test
     fun `should keep minimessage text raw when parsing disabled`() {
         try {
             LegacyTextColorizer.setMiniMessageEnabledOverride(false)

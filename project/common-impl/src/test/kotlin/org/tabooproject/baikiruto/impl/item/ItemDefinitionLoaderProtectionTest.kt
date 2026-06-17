@@ -3,6 +3,7 @@ package org.tabooproject.baikiruto.impl.item
 import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDropEntityFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemProtectionFeature
+import org.tabooproject.baikiruto.impl.item.feature.ItemUpdateFeature
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -95,6 +96,19 @@ class ItemDefinitionLoaderProtectionTest {
 
         assertEquals(false, parsed[ItemProtectionFeature.KEY_CRAFTING_ANY])
         assertEquals(listOf("CRAFTING", "ANVIL"), parsed[ItemProtectionFeature.KEY_CRAFTING_STATIONS])
+    }
+
+    @Test
+    fun `should parse update preserve enchantments meta`() {
+        val parsed = invokeParseMetaEffects(
+            mapOf(
+                "update" to mapOf(
+                    "preserve-enchantments" to true
+                )
+            )
+        )
+
+        assertEquals(true, parsed[ItemUpdateFeature.KEY_PRESERVE_ENCHANTMENTS])
     }
 
     @Test

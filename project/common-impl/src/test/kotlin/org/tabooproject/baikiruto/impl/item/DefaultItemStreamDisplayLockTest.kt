@@ -44,6 +44,29 @@ class DefaultItemStreamDisplayLockTest {
     }
 
     @Test
+    fun `should preserve empty locked lore template line`() {
+        val stream = DefaultItemStream(
+            backingItem = ItemStack(Material.STONE),
+            itemId = "test:item",
+            versionHash = "v1",
+            initialRuntimeData = linkedMapOf(
+                "__locked_display_fields__" to listOf("lore"),
+                "__locked_display_values__" to mapOf(
+                    "lore" to mapOf(
+                        "item_description" to listOf("&7Line A", "", "&7Line B")
+                    )
+                )
+            )
+        )
+
+        val templates = invokeNoArg(stream, "lockedLoreTemplates") as List<*>
+        val context = invokeNoArg(stream, "runtimeTemplateContext")
+        val rendered = invokeWithContext(stream, "renderLoreTemplates", templates.filterIsInstance<String>(), context)
+
+        assertEquals(listOf("&7Line A", "", "&7Line B"), rendered)
+    }
+
+    @Test
     fun `should fallback unique player and replace last trigger placeholder`() {
         val stream = DefaultItemStream(
             backingItem = ItemStack(Material.STONE),

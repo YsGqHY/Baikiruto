@@ -8,6 +8,7 @@ dependencies {
     compileOnly("com.google.code.gson:gson:2.11.0")
     testImplementation("com.google.code.gson:gson:2.11.0")
     testImplementation("com.google.guava:guava:33.3.1-jre")
+    testImplementation("org.mockito:mockito-inline:5.2.0")
     compileOnly("ink.ptms.core:v260100:260100")
     compileOnly("ink.ptms.core:v12110:12110:mapped")
     compileOnly("ink.ptms.core:v12110:12110:universal")
@@ -25,6 +26,10 @@ dependencies {
     compileOnly("net.kyori:adventure-text-minimessage:4.17.0")
     compileOnly("net.kyori:adventure-text-serializer-legacy:4.17.0")
     compileOnly(fileTree("libs"))
+}
+
+tasks.withType<Test> {
+    jvmArgs("-Dnet.bytebuddy.experimental=true")
 }
 
 taboolib {

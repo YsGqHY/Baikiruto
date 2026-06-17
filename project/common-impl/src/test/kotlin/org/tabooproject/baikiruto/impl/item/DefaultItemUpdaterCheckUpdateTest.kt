@@ -178,6 +178,18 @@ class DefaultItemUpdaterCheckUpdateTest {
     }
 
     @Test
+    fun `should enable enchantment preservation flag in runtime data`() {
+        val stream = TestStream(
+            "test:item",
+            "new",
+            ItemStack(Material.STONE),
+            linkedMapOf("update-preserve-enchantments" to true)
+        )
+
+        assertEquals(true, stream.getRuntimeData("update-preserve-enchantments"))
+    }
+
+    @Test
     fun `should update when locked display signature changes with same version hash`() {
         val origin = ItemStack(Material.STONE)
         val sourceStream = DefaultItemStream(
@@ -394,11 +406,11 @@ class DefaultItemUpdaterCheckUpdateTest {
         override val itemId: String,
         override val versionHash: String,
         private val stack: ItemStack,
-        runtime: MutableMap<String, Any?> = linkedMapOf()
+        runtime: Map<String, Any?> = linkedMapOf()
     ) : ItemStream {
 
         override val metaHistory: List<String> = emptyList()
-        private val runtime = runtime
+        private val runtime = LinkedHashMap(runtime)
         private val signalSet = linkedSetOf<ItemSignal>()
 
         override val runtimeData: Map<String, Any?>

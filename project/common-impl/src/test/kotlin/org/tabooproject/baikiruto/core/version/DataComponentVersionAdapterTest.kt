@@ -2,9 +2,11 @@ package org.tabooproject.baikiruto.core.version
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import org.bukkit.NamespacedKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class DataComponentVersionAdapterTest {
 
@@ -20,6 +22,13 @@ class DataComponentVersionAdapterTest {
         "shouldPreserveLegacyDisplay",
         Map::class.java,
         String::class.java
+    ).apply {
+        isAccessible = true
+    }
+    private val parsePersistentCustomDataValue = DataComponentVersionAdapter::class.java.getDeclaredMethod(
+        "parsePersistentCustomDataValue",
+        NamespacedKey::class.java,
+        Any::class.java
     ).apply {
         isAccessible = true
     }
@@ -69,6 +78,62 @@ class DataComponentVersionAdapterTest {
         assertEquals(false, invokeShouldPreserve(runtimeData, "minecraft:custom_data"))
     }
 
+    @Test
+    fun `should expand contact damage resistant aliases into candidates`() {
+        val candidates = invokeCandidates(
+            "minecraft:damage_resistant",
+            mapOf("types" to listOf("contact", "cactus", "sweet_berry_bush"))
+        )
+        val types = candidates.map { candidate ->
+            val map = candidate as Map<*, *>
+            map["types"]
+        }
+
+        assertTrue("#minecraft:is_contact" in types)
+        assertTrue("#minecraft:contact" in types)
+        assertTrue("minecraft:cactus" in types)
+        assertTrue("minecraft:sweet_berry_bush" in types)
+    }
+
+    @Test
+    fun `should not create damage resistant candidates when disabled`() {
+        val candidates = invokeCandidates("minecraft:damage_resistant", mapOf("enabled" to false, "types" to listOf("contact")))
+
+        assertTrue(candidates.isEmpty())
+    }
+
+    @Test
+    fun `should treat cmi rainbow one flag as byte persistent data`() {
+        val value = invokePersistentCustomDataValue(NamespacedKey("cmilib", "cmirainbowarmor"), 1)
+
+        assertEquals("ByteValue", value::class.simpleName)
+        assertEquals(1, value::class.java.getDeclaredMethod("getValue").invoke(value))
+    }
+
+    @Test
+    fun `should keep ordinary public bukkit integer flags as integer persistent data`() {
+        val value = invokePersistentCustomDataValue(NamespacedKey("example", "flag"), 1)
+
+        assertEquals("IntValue", value::class.simpleName)
+        assertEquals(1, value::class.java.getDeclaredMethod("getValue").invoke(value))
+    }
+
+    @Test
+    fun `should support explicit byte suffix for public bukkit values`() {
+        val value = invokePersistentCustomDataValue(NamespacedKey("example", "flag"), "1b")
+
+        assertEquals("ByteValue", value::class.simpleName)
+        assertEquals(1, value::class.java.getDeclaredMethod("getValue").invoke(value))
+    }
+
+    @Test
+    fun `should support explicit typed map for public bukkit values`() {
+        val value = invokePersistentCustomDataValue(NamespacedKey("example", "flag"), mapOf("type" to "byte", "value" to 1))
+
+        assertEquals("ByteValue", value::class.simpleName)
+        assertEquals(1, value::class.java.getDeclaredMethod("getValue").invoke(value))
+    }
+
     private fun invokeCandidates(componentKey: String, value: Any): List<Any> {
         @Suppress("UNCHECKED_CAST")
         return componentValueCandidates.invoke(adapter, componentKey, value) as List<Any>
@@ -76,5 +141,9 @@ class DataComponentVersionAdapterTest {
 
     private fun invokeShouldPreserve(runtimeData: Map<String, Any?>, componentKey: String): Boolean {
         return shouldPreserveLegacyDisplay.invoke(adapter, runtimeData, componentKey) as Boolean
+    }
+
+    private fun invokePersistentCustomDataValue(key: NamespacedKey, value: Any): Any {
+        return parsePersistentCustomDataValue.invoke(adapter, key, value)!!
     }
 }

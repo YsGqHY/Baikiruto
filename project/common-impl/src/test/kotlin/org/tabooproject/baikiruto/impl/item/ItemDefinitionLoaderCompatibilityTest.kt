@@ -125,6 +125,68 @@ class ItemDefinitionLoaderCompatibilityTest {
     }
 
     @Test
+    fun `should merge item flags from components and meta`() {
+        val effects = invokeMapMethod(
+            "parseMetaEffects",
+            mapOf(
+                "item-flags" to listOf("hide_enchantments"),
+                "components" to mapOf(
+                    "hide_tooltip" to true,
+                    "tooltip_display" to mapOf(
+                        "hidden_components" to listOf("minecraft:attribute_modifiers")
+                    ),
+                    "enchantments" to mapOf(
+                        "sharpness" to 5,
+                        "show_in_tooltip" to false
+                    )
+                )
+            )
+        )
+
+        assertEquals(listOf("HIDE_ENCHANTS"), effects["item-flags"])
+        val components = effects["components"] as Map<*, *>
+        val tooltipDisplay = components["tooltip_display"] as Map<*, *>
+        val hidden = tooltipDisplay["hidden_components"] as List<*>
+        assertEquals(true, components["hide_tooltip"])
+        assertTrue("minecraft:enchantments" in hidden)
+        assertTrue("minecraft:attribute_modifiers" in hidden)
+    }
+
+    @Test
+    fun `should parse damage resistant contact aliases`() {
+        val effects = invokeMapMethod(
+            "parseComponents",
+            mapOf(
+                "damage_resistant" to mapOf(
+                    "enabled" to true,
+                    "types" to listOf("contact", "cactus", "sweet_berry_bush")
+                )
+            )
+        )
+
+        val components = effects["components"] as Map<*, *>
+        val damageResistant = effects["damage-resistant"] as Map<*, *>
+
+        assertTrue("damage_resistant" in components)
+        assertEquals(listOf("contact"), effects["damage-resistant-types"])
+        assertEquals(listOf("contact"), damageResistant["types"])
+    }
+
+    @Test
+    fun `should keep damage resistant disabled when configured false`() {
+        val effects = invokeMapMethod(
+            "parseComponents",
+            mapOf(
+                "damage_resistant" to false
+            )
+        )
+
+        val components = effects["components"] as Map<*, *>
+        assertEquals(false, components["damage_resistant"])
+        assertEquals(false, effects["damage-resistant-enabled"])
+    }
+
+    @Test
     fun `should merge components and custom data across runtime chunks`() {
         val merged = invokeMergeRuntimeData(
             mapOf(
@@ -361,6 +423,15 @@ class ItemDefinitionLoaderCompatibilityTest {
         val section = sectionOf(mapOf("lore" to listOf("&aLine-1\n&bLine-2", "&eLine-3")))
         assertEquals(
             listOf("&aLine-1", "&bLine-2", "&eLine-3"),
+            invokeSectionListMethod("parseLore", section)
+        )
+    }
+
+    @Test
+    fun `should keep empty lore lines from direct list`() {
+        val section = sectionOf(mapOf("lore" to listOf("&aLine-1", "", "&bLine-2")))
+        assertEquals(
+            listOf("&aLine-1", "", "&bLine-2"),
             invokeSectionListMethod("parseLore", section)
         )
     }

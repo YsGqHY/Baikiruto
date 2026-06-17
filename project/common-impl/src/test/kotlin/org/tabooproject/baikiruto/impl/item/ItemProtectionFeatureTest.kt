@@ -75,6 +75,36 @@ class ItemProtectionFeatureTest {
     }
 
     @Test
+    fun `should normalize crafting station aliases`() {
+        val stream = stream(
+            mapOf(
+                ItemProtectionFeature.KEY_CRAFTING_ANY to false,
+                ItemProtectionFeature.KEY_CRAFTING_STATIONS to listOf("切石机", "附魔台", "铁砧", "砂轮", "锻造台", "合成器")
+            )
+        )
+
+        assertTrue(ItemProtectionFeature.blocksStation(stream, "STONECUTTER"))
+        assertTrue(ItemProtectionFeature.blocksStation(stream, "ENCHANTING"))
+        assertTrue(ItemProtectionFeature.blocksStation(stream, "ANVIL"))
+        assertTrue(ItemProtectionFeature.blocksStation(stream, "GRINDSTONE"))
+        assertTrue(ItemProtectionFeature.blocksStation(stream, "SMITHING"))
+        assertTrue(ItemProtectionFeature.blocksStation(stream, "CRAFTER"))
+    }
+
+    @Test
+    fun `should normalize destroy contact aliases`() {
+        val stream = stream(
+            mapOf(
+                ItemProtectionFeature.KEY_DESTROY_ENABLED to true,
+                ItemProtectionFeature.KEY_DESTROY_CAUSES to listOf("contact", "cactus", "sweet_berry_bush")
+            )
+        )
+
+        assertTrue(ItemProtectionFeature.isDestroyProtected(stream, EntityDamageEvent.DamageCause.CONTACT))
+        assertTrue(ItemProtectionFeature.isFireCause(EntityDamageEvent.DamageCause.FIRE))
+    }
+
+    @Test
     fun `should match destroy damage cause aliases`() {
         val stream = stream(
             mapOf(
