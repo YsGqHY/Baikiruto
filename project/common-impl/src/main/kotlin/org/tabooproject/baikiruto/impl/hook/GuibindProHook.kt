@@ -44,21 +44,30 @@ object GuibindProHook : ItemUpdateStatePreserver {
     private fun BindingSnapshot.restoreBound(rebuilt: ItemStack, player: Player?, bridge: Bridge): ItemStack {
         val ownerPlayer = resolveOwnerPlayer(player, bridge)
         if (ownerPlayer != null) {
-            val canWriteLoreOwner = currentPlayerOwns || !ownerName.isNullOrBlank()
-            val restored = if (canWriteLoreOwner) {
-                bridge.setBindAll(rebuilt, ownerPlayer)
-                    ?: bridge.setBind(rebuilt, ownerPlayer)
-                    ?: bridge.setBindNbt(rebuilt, ownerPlayer)
-            } else {
-                bridge.setBindNbt(rebuilt, ownerPlayer)
-            }
-            if (restored != null) {
-                if (boundLoreLine.isNullOrBlank() || bridge.hasBindLore(restored)) {
-                    return restored
+            // 优先尝试完整恢复（lore + NBT）
+            val fullRestore = bridge.setBindAll(rebuilt, ownerPlayer)
+                ?: bridge.setBind(rebuilt, ownerPlayer)
+            if (fullRestore != null) {
+                // 完整恢复成功后，确保 NBT 也被写入（某些配置可能只启用 lore）
+                val withNbt = bridge.setBindNbt(fullRestore, ownerPlayer) ?: fullRestore
+                if (boundLoreLine.isNullOrBlank() || bridge.hasBindLore(withNbt)) {
+                    return withNbt
                 }
-                return transplantBoundLore(restored, boundLoreLine, bridge)
+                // 如果完整恢复后 lore 仍缺失，尝试移植
+                return transplantBoundLore(withNbt, boundLoreLine, bridge)
+            }
+            // 完整恢复失败，至少恢复 NBT 保证绑定状态
+            val nbtOnly = bridge.setBindNbt(rebuilt, ownerPlayer)
+            if (nbtOnly != null) {
+                // NBT 恢复成功后，尝试移植 lore
+                return if (!boundLoreLine.isNullOrBlank()) {
+                    transplantBoundLore(nbtOnly, boundLoreLine, bridge)
+                } else {
+                    nbtOnly
+                }
             }
         }
+        // 无法解析 owner 或所有恢复方法失败，仅移植 lore 作为最后手段
         return if (!boundLoreLine.isNullOrBlank()) {
             transplantBoundLore(rebuilt, boundLoreLine, bridge)
         } else {
@@ -93,12 +102,28 @@ object GuibindProHook : ItemUpdateStatePreserver {
     private fun transplantBoundLore(itemStack: ItemStack, boundLoreLine: String, bridge: Bridge): ItemStack {
         val itemMeta = itemStack.itemMeta ?: return itemStack
         val lore = itemMeta.lore?.toMutableList() ?: mutableListOf()
-        val existingIndex = bridge.findBindLoreIndex(lore)
-        if (existingIndex in lore.indices) {
-            lore[existingIndex] = boundLoreLine
-        } else if (lore.none { stripColor(it) == stripColor(boundLoreLine) }) {
-            lore += boundLoreLine
+        val strippedTarget = stripColor(boundLoreLine)
+
+        // 检查是否已存在相同内容的绑定行（去色比较）
+        val duplicateIndex = lore.indexOfFirst { stripColor(it) == strippedTarget }
+        if (duplicateIndex >= 0) {
+            // 已存在，替换为带颜色的版本
+            lore[duplicateIndex] = boundLoreLine
+            itemMeta.lore = lore
+            itemStack.itemMeta = itemMeta
+            return itemStack
         }
+
+        // 查找 GuibindPro 预期的绑定行位置
+        val bindLoreIndex = bridge.findBindLoreIndex(lore)
+        if (bindLoreIndex in lore.indices) {
+            // 找到预期位置，替换该行
+            lore[bindLoreIndex] = boundLoreLine
+        } else {
+            // 未找到预期位置，插入到开头（GuibindPro 默认行为）
+            lore.add(0, boundLoreLine)
+        }
+
         itemMeta.lore = lore
         itemStack.itemMeta = itemMeta
         return itemStack
