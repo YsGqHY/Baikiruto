@@ -18,6 +18,7 @@ import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDataMapperFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDropEntityFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemProtectionFeature
+import org.tabooproject.baikiruto.impl.item.feature.ItemUpdateFeature
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
 import taboolib.common.platform.function.console
@@ -832,26 +833,26 @@ object ItemDefinitionLoader {
     }
 
     private fun mergeModelRuntimeData(models: List<ItemModel>): Map<String, Any?> {
-        val merged = linkedMapOf<String, Any?>()
+        var merged: Map<String, Any?> = emptyMap()
         models.forEach { model ->
             val data = model.data
-            merged.putAll(parseData(anyToMap(data["data"])))
-            merged.putAll(parseDataMapper(anyToMap(data["data-mapper"])))
-            merged.putAll(anyToMap(data["effects"]))
-            merged.putAll(parseMetaEffects(anyToMap(data["meta"])))
-            merged.putAll(parseComponents(anyToMap(data["components"])))
-            merged.putAll(parseI18n(anyToMap(data["i18n"])))
-            data["display"]?.let {
-                if (it is Map<*, *>) {
-                    merged["display"] = it
-                }
-            }
-            parseDisplayAsRuntimeData(
-                data["name!!"] ?: data["name"],
-                data["lore!!"] ?: data["lore"]
-            ).forEach { (key, value) ->
-                merged[key] = value
-            }
+            val displayData = data["display"]?.let {
+                if (it is Map<*, *>) mapOf("display" to it) else emptyMap()
+            } ?: emptyMap()
+            merged = mergeRuntimeData(
+                merged,
+                parseData(anyToMap(data["data"])),
+                parseDataMapper(anyToMap(data["data-mapper"])),
+                anyToMap(data["effects"]),
+                parseMetaEffects(anyToMap(data["meta"])),
+                parseComponents(anyToMap(data["components"])),
+                parseI18n(anyToMap(data["i18n"])),
+                displayData,
+                parseDisplayAsRuntimeData(
+                    data["name!!"] ?: data["name"],
+                    data["lore!!"] ?: data["lore"]
+                )
+            )
         }
         return merged
     }
@@ -1162,6 +1163,12 @@ object ItemDefinitionLoader {
                 "tooltip_style" -> {
                     stringValue(rawValue)?.let { effects["tooltip-style"] = it }
                 }
+                "hide_tooltip", "hide_additional_tooltip" -> {
+                    asBoolean(rawValue)?.let { components[componentKey] = it }
+                }
+                "tooltip_display" -> {
+                    components[componentKey] = normalizedComponentValue
+                }
                 "rarity" -> {
                     stringValue(rawValue)?.let { effects["rarity"] = it }
                 }
@@ -1256,6 +1263,9 @@ object ItemDefinitionLoader {
         parseProtectionMeta(section).forEach { (key, value) ->
             effects[key] = value
         }
+        parseUpdateMeta(section.getConfigurationSection("update")).forEach { (key, value) ->
+            effects[key] = value
+        }
         if (section.getBoolean("shiny")) {
             effects["glow"] = true
         }
@@ -1276,10 +1286,13 @@ object ItemDefinitionLoader {
         }
 
         val itemFlags = section.getStringList("itemflag").ifEmpty {
-            section.getStringList("item-flags")
+            section.getStringList("item-flags").ifEmpty {
+                section.getStringList("itemflags")
+            }
         }
-        if (itemFlags.isNotEmpty()) {
-            effects["item-flags"] = itemFlags
+        normalizeItemFlags(itemFlags).takeIf { it.isNotEmpty() }?.let {
+            effects["item-flags"] = it
+            applyItemFlagComponentHints(it, effects)
         }
 
         val enchantments = section.getConfigurationSection("enchantment")
@@ -1313,8 +1326,17 @@ object ItemDefinitionLoader {
         parseAdventureBlockList(section).forEach { (key, value) ->
             effects[key] = value
         }
-        parseComponents(section.getConfigurationSection("components")).forEach { (key, value) ->
-            effects[key] = value
+        val componentEffects = parseComponents(section.getConfigurationSection("components"))
+        componentEffects.forEach { (key, value) ->
+            when (key) {
+                "components" -> mergeComponentRuntimeData(effects, value)
+                "item-flags" -> effects["item-flags"] = mergeItemFlags(effects["item-flags"], value)
+                else -> effects[key] = value
+            }
+        }
+        normalizeItemFlags(effects["item-flags"]).takeIf { it.isNotEmpty() }?.let {
+            effects["item-flags"] = it
+            applyItemFlagComponentHints(it, effects)
         }
 
         section.getConfigurationSection("native")?.let {
@@ -1392,6 +1414,9 @@ object ItemDefinitionLoader {
         parseProtectionMeta(section).forEach { (key, value) ->
             effects[key] = value
         }
+        parseUpdateMeta(anyToMap(section["update"])).forEach { (key, value) ->
+            effects[key] = value
+        }
         if (asBoolean(section["shiny"]) == true) {
             effects["glow"] = true
         }
@@ -1412,10 +1437,13 @@ object ItemDefinitionLoader {
         }
 
         val itemFlags = toStringList(section["itemflag"]).ifEmpty {
-            toStringList(section["item-flags"])
+            toStringList(section["item-flags"]).ifEmpty {
+                toStringList(section["itemflags"])
+            }
         }
-        if (itemFlags.isNotEmpty()) {
-            effects["item-flags"] = itemFlags
+        normalizeItemFlags(itemFlags).takeIf { it.isNotEmpty() }?.let {
+            effects["item-flags"] = it
+            applyItemFlagComponentHints(it, effects)
         }
 
         val enchantments = anyToMap(section["enchantment"]).ifEmpty {
@@ -1451,8 +1479,17 @@ object ItemDefinitionLoader {
         parseAdventureBlockList(section).forEach { (key, value) ->
             effects[key] = value
         }
-        parseComponents(anyToMap(section["components"])).forEach { (key, value) ->
-            effects[key] = value
+        val componentEffects = parseComponents(anyToMap(section["components"]))
+        componentEffects.forEach { (key, value) ->
+            when (key) {
+                "components" -> mergeComponentRuntimeData(effects, value)
+                "item-flags" -> effects["item-flags"] = mergeItemFlags(effects["item-flags"], value)
+                else -> effects[key] = value
+            }
+        }
+        normalizeItemFlags(effects["item-flags"]).takeIf { it.isNotEmpty() }?.let {
+            effects["item-flags"] = it
+            applyItemFlagComponentHints(it, effects)
         }
 
         anyToMap(section["native"]).takeIf { it.isNotEmpty() }?.let {
@@ -1649,6 +1686,105 @@ object ItemDefinitionLoader {
             )
         ).mapNotNull { ItemScriptTrigger.fromKey(it)?.key }
             .distinct()
+    }
+
+    private fun parseUpdateMeta(section: ConfigurationSection?): Map<String, Any?> {
+        return if (section == null) emptyMap() else parseUpdateMeta(sectionToMap(section))
+    }
+
+    private fun parseUpdateMeta(source: Map<String, Any?>): Map<String, Any?> {
+        if (source.isEmpty()) {
+            return emptyMap()
+        }
+        val preserveEnchantments = asBoolean(
+            readAlias(
+                source,
+                "preserve-enchantments",
+                "preserve_enchantments",
+                "preserveEnchantments",
+                "keep-enchantments",
+                "keep_enchantments",
+                "keepEnchantments"
+            )
+        ) ?: return emptyMap()
+        return mapOf(ItemUpdateFeature.KEY_PRESERVE_ENCHANTMENTS to preserveEnchantments)
+    }
+
+    private fun mergeItemFlags(current: Any?, incoming: Any?): List<String> {
+        return (normalizeItemFlags(current) + normalizeItemFlags(incoming)).distinct()
+    }
+
+    private fun normalizeItemFlags(source: Any?): List<String> {
+        val values = when (source) {
+            null -> emptyList()
+            is String -> toStringList(source)
+            is Iterable<*> -> source.mapNotNull { it?.toString() }
+            else -> toStringList(source)
+        }
+        return values.mapNotNull(::normalizeItemFlag)
+            .distinct()
+    }
+
+    private fun normalizeItemFlag(source: String): String? {
+        val token = source.trim()
+            .takeIf { it.isNotEmpty() }
+            ?.substringAfter(':')
+            ?.replace('-', '_')
+            ?.replace(' ', '_')
+            ?.uppercase(Locale.ENGLISH)
+            ?: return null
+        return when (token.removePrefix("HIDE_")) {
+            "ENCHANT", "ENCHANTS", "ENCHANTMENT", "ENCHANTMENTS" -> "HIDE_ENCHANTS"
+            "ATTRIBUTE", "ATTRIBUTES", "ATTRIBUTE_MODIFIER", "ATTRIBUTE_MODIFIERS" -> "HIDE_ATTRIBUTES"
+            "UNBREAKABLE" -> "HIDE_UNBREAKABLE"
+            "DESTROYS", "CAN_DESTROY", "CAN_BREAK", "BREAKS" -> "HIDE_DESTROYS"
+            "PLACED_ON", "CAN_PLACE_ON", "PLACE_ON" -> "HIDE_PLACED_ON"
+            "POTION_EFFECT", "POTION_EFFECTS", "ADDITIONAL", "ADDITIONAL_TOOLTIP" -> "HIDE_POTION_EFFECTS"
+            "DYE", "DYES", "DYED_COLOR", "COLOR" -> "HIDE_DYE"
+            "ARMOR_TRIM", "TRIM" -> "HIDE_ARMOR_TRIM"
+            "TOOLTIP", "HIDE_TOOLTIP" -> "HIDE_TOOLTIP"
+            "USAGE", "USE", "USES" -> "HIDE_USAGE"
+            else -> if (token.startsWith("HIDE_")) token else "HIDE_$token"
+        }
+    }
+
+    private fun applyItemFlagComponentHints(flags: Iterable<String>, effects: MutableMap<String, Any?>) {
+        val components = anyToMap(effects["components"]).toMutableMap()
+        flags.forEach { flag ->
+            when (flag) {
+                "HIDE_TOOLTIP" -> components["hide_tooltip"] = true
+                "HIDE_POTION_EFFECTS" -> components["hide_additional_tooltip"] = true
+                "HIDE_ENCHANTS" -> {
+                    components["hide_tooltip"] = true
+                    putTooltipDisplayHidden(components, "minecraft:enchantments")
+                }
+                "HIDE_ATTRIBUTES" -> putTooltipDisplayHidden(components, "minecraft:attribute_modifiers")
+                "HIDE_DESTROYS" -> putTooltipDisplayHidden(components, "minecraft:can_break")
+                "HIDE_PLACED_ON" -> putTooltipDisplayHidden(components, "minecraft:can_place_on")
+                "HIDE_UNBREAKABLE" -> putTooltipDisplayHidden(components, "minecraft:unbreakable")
+                "HIDE_DYE" -> putTooltipDisplayHidden(components, "minecraft:dyed_color")
+                "HIDE_ARMOR_TRIM" -> putTooltipDisplayHidden(components, "minecraft:trim")
+                "HIDE_USAGE" -> {
+                    putTooltipDisplayHidden(components, "minecraft:use_cooldown")
+                    putTooltipDisplayHidden(components, "minecraft:food")
+                    putTooltipDisplayHidden(components, "minecraft:consumable")
+                }
+            }
+        }
+        if (components.isNotEmpty()) {
+            effects["components"] = components
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun putTooltipDisplayHidden(components: MutableMap<String, Any?>, componentId: String) {
+        val current = anyToMap(components["tooltip_display"]).toMutableMap()
+        val hidden = toStringList(current["hidden_components"]).toMutableList()
+        if (componentId !in hidden) {
+            hidden += componentId
+        }
+        current["hidden_components"] = hidden.distinct()
+        components["tooltip_display"] = current
     }
 
     private fun readAlias(source: Map<String, Any?>, vararg aliases: String): Any? {
@@ -2564,12 +2700,10 @@ object ItemDefinitionLoader {
         val normalized = if (parsed.isNotEmpty()) {
             parsed.flatMap { it.split('\n') }
                 .map { it.trim() }
-                .filter { it.isNotEmpty() }
         } else {
             toStringList(source)
                 .flatMap { it.split('\n') }
                 .map { it.trim() }
-                .filter { it.isNotEmpty() }
         }
         return applyAutoWrap(normalized, autoWrap)
     }
@@ -2805,9 +2939,32 @@ object ItemDefinitionLoader {
         val effects = linkedMapOf<String, Any?>()
         when (source) {
             null -> return emptyMap()
-            is Boolean, is Number, is String -> {
+            is Boolean, is Number -> {
                 asBoolean(source)?.let { enabled ->
+                    effects["damage-resistant"] = enabled
                     effects["damage-resistant-enabled"] = enabled
+                }
+            }
+            is String -> {
+                val enabled = asBoolean(source)
+                if (enabled != null) {
+                    effects["damage-resistant"] = enabled
+                    effects["damage-resistant-enabled"] = enabled
+                } else {
+                    val types = parseDamageTypeList(source)
+                    if (types.isNotEmpty()) {
+                        effects["damage-resistant"] = mapOf("types" to types)
+                        effects["damage-resistant-enabled"] = true
+                        effects["damage-resistant-types"] = types
+                    }
+                }
+            }
+            is Iterable<*> -> {
+                val types = parseDamageTypeList(source)
+                if (types.isNotEmpty()) {
+                    effects["damage-resistant"] = mapOf("types" to types)
+                    effects["damage-resistant-enabled"] = true
+                    effects["damage-resistant-types"] = types
                 }
             }
             else -> {
@@ -2822,6 +2979,9 @@ object ItemDefinitionLoader {
                 }
                 if (types.isNotEmpty()) {
                     effects["damage-resistant-types"] = types
+                    effects["damage-resistant"] = map.toMutableMap().apply {
+                        this["types"] = types
+                    }.toMap()
                 }
             }
         }
@@ -2953,10 +3113,14 @@ object ItemDefinitionLoader {
     }
 
     private fun normalizeDamageType(source: String): String {
-        return source.trim()
+        val normalized = source.trim()
             .lowercase(Locale.ENGLISH)
             .substringAfter(':')
             .replace('-', '_')
+        return when (normalized) {
+            "contact", "cactus", "sweet_berry_bush", "sweet_berry_bushes", "berry_bush" -> "contact"
+            else -> normalized
+        }
     }
 
     private fun parseUseRemainder(source: Any?): Map<String, Any?> {
