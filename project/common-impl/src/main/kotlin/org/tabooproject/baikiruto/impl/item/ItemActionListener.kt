@@ -67,6 +67,7 @@ import org.tabooproject.baikiruto.core.item.event.ItemUnequipActionEvent
 import org.tabooproject.baikiruto.core.item.event.ItemUseActionEvent
 import org.tabooproject.baikiruto.impl.item.feature.ItemCombatFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
+import org.tabooproject.baikiruto.impl.item.feature.ItemDropEntityFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDurabilityFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemUseRemainderFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemUniqueFeature
@@ -466,6 +467,7 @@ object ItemActionListener {
         if (outcome.changed) {
             event.itemDrop.itemStack = managed.stream.toItemStack()
         }
+        ItemDropEntityFeature.apply(event.itemDrop, managed.stream)
     }
 
     @SubscribeEvent(priority = EventPriority.MONITOR, ignoreCancelled = true)
