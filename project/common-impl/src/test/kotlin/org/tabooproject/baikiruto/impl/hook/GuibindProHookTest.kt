@@ -2,6 +2,8 @@ package org.tabooproject.baikiruto.impl.hook
 
 import org.bukkit.Material
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.meta.ItemMeta
+import org.mockito.Mockito
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -58,5 +60,46 @@ class GuibindProHookTest {
 
         // 应该返回 rebuilt 而不抛异常
         assertNotNull(result)
+    }
+
+    @Test
+    fun `should restore missing bind lore from source snapshot`() {
+        val rebuilt = mockItemStackWithLore(listOf("&7Baikiruto Lore"))
+
+        val result = GuibindProHook.restoreBoundLoreForTesting(rebuilt, "§a已绑定: Steve")
+
+        assertEquals(listOf("§a已绑定: Steve", "&7Baikiruto Lore"), result.itemMeta?.lore)
+    }
+
+    @Test
+    fun `should replace existing bind lore placeholder instead of duplicating`() {
+        val rebuilt = mockItemStackWithLore(listOf("&7Baikiruto Lore", "§c绑定者: Alex"))
+
+        val result = GuibindProHook.restoreBoundLoreForTesting(rebuilt, "§a已绑定: Steve", bindLoreIndex = 1)
+
+        assertEquals(listOf("&7Baikiruto Lore", "§a已绑定: Steve"), result.itemMeta?.lore)
+    }
+
+    private fun mockItemStackWithLore(initialLore: List<String>): ItemStack {
+        val itemStack = Mockito.mock(ItemStack::class.java)
+        var meta = mockItemMeta(initialLore)
+        Mockito.`when`(itemStack.itemMeta).thenAnswer { meta }
+        Mockito.`when`(itemStack.setItemMeta(Mockito.any(ItemMeta::class.java))).thenAnswer { invocation ->
+            meta = invocation.arguments[0] as ItemMeta
+            true
+        }
+        return itemStack
+    }
+
+    private fun mockItemMeta(initialLore: List<String>): ItemMeta {
+        val itemMeta = Mockito.mock(ItemMeta::class.java)
+        var lore: List<String>? = initialLore
+        Mockito.`when`(itemMeta.lore).thenAnswer { lore }
+        Mockito.doAnswer { invocation ->
+            @Suppress("UNCHECKED_CAST")
+            lore = invocation.arguments[0] as? List<String>
+            null
+        }.`when`(itemMeta).lore = Mockito.anyList()
+        return itemMeta
     }
 }

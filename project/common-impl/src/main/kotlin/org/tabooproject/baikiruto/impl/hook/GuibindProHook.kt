@@ -13,7 +13,7 @@ import java.util.UUID
 
 object GuibindProHook : ItemUpdateStatePreserver {
 
-    private const val PLUGIN_NAME = "GuibindPro"
+    private val PLUGIN_NAMES = arrayOf("GuibindPro", "GuiBindPro")
 
     override fun preserve(source: ItemStack, rebuilt: ItemStack, player: Player?): ItemStack {
         if (!BaikirutoSettings.guibindProHookEnabled) {
@@ -44,34 +44,48 @@ object GuibindProHook : ItemUpdateStatePreserver {
     private fun BindingSnapshot.restoreBound(rebuilt: ItemStack, player: Player?, bridge: Bridge): ItemStack {
         val ownerPlayer = resolveOwnerPlayer(player, bridge)
         if (ownerPlayer != null) {
-            // 优先尝试完整恢复（lore + NBT）
             val fullRestore = bridge.setBindAll(rebuilt, ownerPlayer)
                 ?: bridge.setBind(rebuilt, ownerPlayer)
             if (fullRestore != null) {
-                // 完整恢复成功后，确保 NBT 也被写入（某些配置可能只启用 lore）
                 val withNbt = bridge.setBindNbt(fullRestore, ownerPlayer) ?: fullRestore
-                if (boundLoreLine.isNullOrBlank() || bridge.hasBindLore(withNbt)) {
-                    return withNbt
-                }
-                // 如果完整恢复后 lore 仍缺失，尝试移植
-                return transplantBoundLore(withNbt, boundLoreLine, bridge)
+                return restoreBoundLore(withNbt, ownerPlayer.name, bridge)
             }
-            // 完整恢复失败，至少恢复 NBT 保证绑定状态
             val nbtOnly = bridge.setBindNbt(rebuilt, ownerPlayer)
             if (nbtOnly != null) {
-                // NBT 恢复成功后，尝试移植 lore
-                return if (!boundLoreLine.isNullOrBlank()) {
-                    transplantBoundLore(nbtOnly, boundLoreLine, bridge)
-                } else {
-                    nbtOnly
-                }
+                return restoreBoundLore(nbtOnly, ownerPlayer.name, bridge)
             }
         }
-        // 无法解析 owner 或所有恢复方法失败，仅移植 lore 作为最后手段
-        return if (!boundLoreLine.isNullOrBlank()) {
-            transplantBoundLore(rebuilt, boundLoreLine, bridge)
+        return restoreBoundLore(rebuilt, ownerName, bridge)
+    }
+
+    internal fun restoreBoundLoreForTesting(itemStack: ItemStack, boundLoreLine: String, bindLoreIndex: Int = -1): ItemStack {
+        return transplantBoundLore(itemStack, boundLoreLine, TestBridge(bindLoreIndex))
+    }
+
+    private fun BindingSnapshot.restoreBoundLore(itemStack: ItemStack, ownerName: String?, bridge: BindLoreBridge): ItemStack {
+        val sourceLoreLine = boundLoreLine?.takeIf { it.isNotBlank() }
+        if (bridge.hasBindLore(itemStack)) {
+            return if (sourceLoreLine != null) {
+                transplantBoundLore(itemStack, sourceLoreLine, bridge)
+            } else {
+                itemStack
+            }
+        }
+        val generated = ownerName
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { owner -> bridge.setBindLore(itemStack, owner) }
+        if (generated != null) {
+            return if (sourceLoreLine != null && !bridge.hasBindLore(generated)) {
+                transplantBoundLore(generated, sourceLoreLine, bridge)
+            } else {
+                generated
+            }
+        }
+        return if (sourceLoreLine != null) {
+            transplantBoundLore(itemStack, sourceLoreLine, bridge)
         } else {
-            rebuilt
+            itemStack
         }
     }
 
@@ -99,7 +113,7 @@ object GuibindProHook : ItemUpdateStatePreserver {
         )
     }
 
-    private fun transplantBoundLore(itemStack: ItemStack, boundLoreLine: String, bridge: Bridge): ItemStack {
+    private fun transplantBoundLore(itemStack: ItemStack, boundLoreLine: String, bridge: BindLoreBridge): ItemStack {
         val itemMeta = itemStack.itemMeta ?: return itemStack
         val lore = itemMeta.lore?.toMutableList() ?: mutableListOf()
         val strippedTarget = stripColor(boundLoreLine)
@@ -130,11 +144,21 @@ object GuibindProHook : ItemUpdateStatePreserver {
     }
 
     private fun resolveBridge(): Bridge? {
-        val plugin = try {
-            Bukkit.getPluginManager().getPlugin(PLUGIN_NAME)
+        val pluginManager = try {
+            Bukkit.getPluginManager()
         } catch (_: Throwable) {
             null
         } ?: return null
+        val plugin = PLUGIN_NAMES.asSequence()
+            .mapNotNull { name ->
+                try {
+                    pluginManager.getPlugin(name)
+                } catch (_: Throwable) {
+                    null
+                }
+            }
+            .firstOrNull()
+            ?: return null
         if (!plugin.isEnabled) {
             return null
         }
@@ -158,12 +182,37 @@ object GuibindProHook : ItemUpdateStatePreserver {
         val recoverySignature: String?
     )
 
+    private interface BindLoreBridge {
+
+        fun hasBindLore(itemStack: ItemStack): Boolean
+
+        fun setBindLore(itemStack: ItemStack, ownerName: String): ItemStack?
+
+        fun findBindLoreIndex(lore: List<String>): Int
+    }
+
+    private class TestBridge(private val bindLoreIndex: Int) : BindLoreBridge {
+
+        override fun hasBindLore(itemStack: ItemStack): Boolean {
+            val lore = itemStack.itemMeta?.lore ?: return false
+            return findBindLoreIndex(lore) in lore.indices
+        }
+
+        override fun setBindLore(itemStack: ItemStack, ownerName: String): ItemStack? {
+            return null
+        }
+
+        override fun findBindLoreIndex(lore: List<String>): Int {
+            return bindLoreIndex
+        }
+    }
+
     private class Bridge(
         val server: Any?,
         private val api: Any?,
         private val bindingManager: Any?,
         private val loreBindUtil: Any?
-    ) {
+    ) : BindLoreBridge {
 
         fun snapshot(source: ItemStack, player: Player?): BindingSnapshot? {
             val bound = hasBind(source)
@@ -178,19 +227,21 @@ object GuibindProHook : ItemUpdateStatePreserver {
             val loreOwner = stringCall(loreBindUtil, "getOwner", source)
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
+            val currentPlayerOwns = player != null && hasBindUser(source, player)
             val ownerUuid = uuidCall(api, "getBindUUID", source)
                 ?: uuidCall(bindingManager, "getNbtUUID", source)
                 ?: owner?.uniqueId
                 ?: loreOwner?.let(::offlineUuid)
             val ownerName = loreOwner
                 ?: owner?.name?.trim()?.takeIf { it.isNotEmpty() }
+                ?: player?.name?.trim()?.takeIf { currentPlayerOwns && it.isNotEmpty() }
                 ?: ownerUuid?.let(::offlineName)
             return BindingSnapshot(
                 bound = bound,
                 unbound = unbound,
                 ownerName = ownerName,
                 ownerUuid = ownerUuid,
-                currentPlayerOwns = player != null && hasBindUser(source, player),
+                currentPlayerOwns = currentPlayerOwns,
                 boundLoreLine = if (bound) findBoundLoreLine(source, ownerName) else null,
                 recoverySignature = recoverySignature
             )
@@ -202,7 +253,7 @@ object GuibindProHook : ItemUpdateStatePreserver {
                 ?: false
         }
 
-        fun hasBindLore(itemStack: ItemStack): Boolean {
+        override fun hasBindLore(itemStack: ItemStack): Boolean {
             val lore = itemStack.itemMeta?.lore ?: return false
             return findBindLoreIndex(lore) in lore.indices
         }
@@ -228,6 +279,10 @@ object GuibindProHook : ItemUpdateStatePreserver {
                 ?: itemCall(bindingManager, "setBind", itemStack, player)
         }
 
+        override fun setBindLore(itemStack: ItemStack, ownerName: String): ItemStack? {
+            return itemCall(loreBindUtil, "bind", itemStack, ownerName)
+        }
+
         fun setBindNbt(itemStack: ItemStack, player: Player): ItemStack? {
             return itemCall(bindingManager, "setBindNbt", itemStack, player)
         }
@@ -241,7 +296,7 @@ object GuibindProHook : ItemUpdateStatePreserver {
             return itemCall(api, "setRecoverySignature", itemStack, signature)
         }
 
-        fun findBindLoreIndex(lore: List<String>): Int {
+        override fun findBindLoreIndex(lore: List<String>): Int {
             return intCall(loreBindUtil, "findBindLoreIndex", lore) ?: -1
         }
 
