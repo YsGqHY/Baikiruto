@@ -4,7 +4,9 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import org.bukkit.Material
 import org.bukkit.NamespacedKey
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataContainer
 import org.bukkit.persistence.PersistentDataType
@@ -55,6 +57,7 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
                     "minecraft:unbreakable" -> applyUnbreakableComponent(wrapper, value)
                     "minecraft:glider" -> applyUnitToggleComponent(wrapper, componentKey, value)
                     "minecraft:hide_tooltip", "minecraft:hide_additional_tooltip" -> applyUnitToggleComponent(wrapper, componentKey, value)
+                    "minecraft:attribute_modifiers" -> applyAttributeModifiersComponent(wrapper, itemStack.type, value)
                     "minecraft:damage_resistant" -> applyDamageResistantComponent(wrapper, value)
                     else -> applyNormalizedComponent(wrapper, componentKey, value)
                 }
@@ -169,6 +172,11 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         wrapper.setComponent(componentKey, value)
     }
 
+    private fun applyAttributeModifiersComponent(wrapper: ComponentItemWrapper, material: Material, value: Any) {
+        val normalized = normalizeAttributeModifiers(value, material) ?: return
+        applyNormalizedComponent(wrapper, "minecraft:attribute_modifiers", normalized)
+    }
+
     private fun applyDamageResistantComponent(wrapper: ComponentItemWrapper, value: Any) {
         val enabled = booleanValue(value)
         if (enabled != null) {
@@ -199,7 +207,7 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
                 listOfNotNull(normalizeEnchantments(value))
             }
             "minecraft:attribute_modifiers" -> {
-                listOfNotNull(normalizeAttributeModifiers(value))
+                listOfNotNull(normalizeAttributeModifiers(value, null))
             }
             "minecraft:can_break",
             "minecraft:can_place_on" -> {
@@ -384,35 +392,132 @@ open class DataComponentVersionAdapter : BaseItemMetaVersionAdapter() {
         return levels.takeIf { it.isNotEmpty() }
     }
 
-    private fun normalizeAttributeModifiers(source: Any): Any? {
+    private fun normalizeAttributeModifiers(source: Any, material: Material?): Any? {
+        val root = source as? Map<*, *>
         val modifiers: Iterable<*> = when (source) {
             is Iterable<*> -> source
             is Map<*, *> -> source["modifiers"] as? Iterable<*> ?: return null
             else -> return null
         }
+        val preserveDefaults = root?.let(::shouldPreserveDefaultAttributeModifiers) ?: true
 
         val normalized = mutableListOf<Map<String, Any>>()
+        if (preserveDefaults && material != null) {
+            normalized += collectDefaultAttributeModifierComponents(material)
+        }
         modifiers.forEachIndexed { index, rawModifier ->
-            val map = rawModifier as? Map<*, *> ?: return@forEachIndexed
-            val type = map["type"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-                ?: map["attribute"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-                ?: return@forEachIndexed
-            val amount = numberValue(map["amount"])?.toDouble() ?: return@forEachIndexed
-
-            val entry = linkedMapOf<String, Any>(
-                "type" to normalizeNamespacedId(type),
-                "id" to normalizeAttributeModifierId(map["id"], type, index),
-                "amount" to amount,
-                "operation" to normalizeAttributeModifierOperation(map["operation"])
-            )
-
-            val slot = normalizeAttributeModifierSlot(map["slot"])
-            if (slot != "any") {
-                entry["slot"] = slot
-            }
-            normalized += entry
+            normalizeConfiguredAttributeModifier(rawModifier, index)?.let(normalized::add)
         }
         return normalized.takeIf { it.isNotEmpty() }
+    }
+
+    private fun normalizeConfiguredAttributeModifier(rawModifier: Any?, index: Int): Map<String, Any>? {
+        val map = rawModifier as? Map<*, *> ?: return null
+        val type = map["type"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            ?: map["attribute"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return null
+        val amount = numberValue(map["amount"])?.toDouble() ?: return null
+
+        val entry = linkedMapOf<String, Any>(
+            "type" to normalizeNamespacedId(type),
+            "id" to normalizeAttributeModifierId(map["id"], type, index),
+            "amount" to amount,
+            "operation" to normalizeAttributeModifierOperation(map["operation"])
+        )
+
+        val slot = normalizeAttributeModifierSlot(map["slot"])
+        if (slot != "any") {
+            entry["slot"] = slot
+        }
+        return entry
+    }
+
+    private fun shouldPreserveDefaultAttributeModifiers(root: Map<*, *>): Boolean {
+        booleanValue(root["preserve-defaults"] ?: root["preserve_defaults"] ?: root["include-defaults"] ?: root["include_defaults"])?.let {
+            return it
+        }
+        booleanValue(root["replace"] ?: root["replace-all"] ?: root["replace_all"] ?: root["replace-defaults"] ?: root["replace_defaults"])?.let {
+            return !it
+        }
+        return true
+    }
+
+    private fun collectDefaultAttributeModifierComponents(material: Material): List<Map<String, Any>> {
+        val getDefaultModifiers = material.javaClass.methods.firstOrNull { method ->
+            method.name == "getDefaultAttributeModifiers" && method.parameterCount == 1 &&
+                method.parameterTypes[0] == EquipmentSlot::class.java
+        } ?: return emptyList()
+        val result = arrayListOf<Map<String, Any>>()
+        EquipmentSlot.values().forEach { slot ->
+            val multimap = reflectOrNull { getDefaultModifiers.invoke(material, slot) } ?: return@forEach
+            val entriesMethod = multimap.javaClass.methods.firstOrNull { method ->
+                method.name == "entries" && method.parameterCount == 0
+            } ?: return@forEach
+            val entries = reflectOrNull { entriesMethod.invoke(multimap) as? Collection<*> } ?: return@forEach
+            entries.forEachIndexed { index, entry ->
+                val attribute = invokeNoArg(entry, "getKey") ?: return@forEachIndexed
+                val modifier = invokeNoArg(entry, "getValue") ?: return@forEachIndexed
+                defaultAttributeModifierComponent(attribute, modifier, slot, result.size + index)?.let(result::add)
+            }
+        }
+        return result
+    }
+
+    private fun defaultAttributeModifierComponent(attribute: Any, modifier: Any, slot: EquipmentSlot, index: Int): Map<String, Any>? {
+        val amount = (invokeNoArg(modifier, "getAmount") as? Number)?.toDouble() ?: return null
+        val operation = invokeNoArg(modifier, "getOperation")?.toString() ?: return null
+        val id = defaultAttributeModifierId(modifier, attribute, slot, index)
+        return linkedMapOf<String, Any>(
+            "type" to normalizeAttributeId(attribute),
+            "id" to id,
+            "amount" to amount,
+            "operation" to normalizeAttributeModifierOperation(operation),
+            "slot" to normalizeAttributeModifierSlot(slot.name)
+        )
+    }
+
+    private fun defaultAttributeModifierId(modifier: Any, attribute: Any, slot: EquipmentSlot, index: Int): String {
+        val attributeId = normalizeAttributeId(attribute)
+        val key = invokeNoArg(modifier, "getKey")?.toString()?.takeIf { ':' in it }
+            ?: "vanilla_${attributeId.substringAfter(':')}_${slot.name.lowercase(Locale.ENGLISH)}_$index"
+        return normalizeAttributeModifierId(key, attributeId, index)
+    }
+
+    private fun normalizeAttributeId(attribute: Any): String {
+        val rawKey = invokeNoArg(attribute, "getKey")?.toString()?.takeIf { it.isNotBlank() }
+            ?: invokeNoArg(attribute, "getName")?.toString()?.takeIf { it.isNotBlank() }
+            ?: (attribute as? Enum<*>)?.name
+            ?: attribute.toString()
+        val normalized = rawKey.lowercase(Locale.ENGLISH)
+        val namespace = normalized.substringBefore(':', "minecraft").ifBlank { "minecraft" }
+        val path = normalized.substringAfter(':', normalized)
+            .removePrefix("generic_")
+            .removePrefix("generic.")
+        return "$namespace:$path"
+    }
+
+    private fun invokeNoArg(target: Any?, methodName: String): Any? {
+        if (target == null) {
+            return null
+        }
+        val method = target.javaClass.methods.firstOrNull { it.name == methodName && it.parameterCount == 0 } ?: return null
+        return reflectOrNull { method.invoke(target) }
+    }
+
+    private fun <T> reflectOrNull(block: () -> T): T? {
+        return try {
+            block()
+        } catch (_: ReflectiveOperationException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        } catch (_: IllegalStateException) {
+            null
+        } catch (_: SecurityException) {
+            null
+        } catch (_: UnsupportedOperationException) {
+            null
+        }
     }
 
     private fun normalizeAdventurePredicate(source: Any): Any? {

@@ -2,6 +2,7 @@ package org.tabooproject.baikiruto.core.version
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,6 +30,19 @@ class DataComponentVersionAdapterTest {
         "parsePersistentCustomDataValue",
         NamespacedKey::class.java,
         Any::class.java
+    ).apply {
+        isAccessible = true
+    }
+    private val normalizeAttributeModifiers = DataComponentVersionAdapter::class.java.getDeclaredMethod(
+        "normalizeAttributeModifiers",
+        Any::class.java,
+        Material::class.java
+    ).apply {
+        isAccessible = true
+    }
+    private val shouldPreserveDefaultAttributeModifiers = DataComponentVersionAdapter::class.java.getDeclaredMethod(
+        "shouldPreserveDefaultAttributeModifiers",
+        Map::class.java
     ).apply {
         isAccessible = true
     }
@@ -103,6 +117,29 @@ class DataComponentVersionAdapterTest {
     }
 
     @Test
+    fun `should preserve vanilla default attributes unless replacement requested`() {
+        assertEquals(true, invokeShouldPreserveDefaultAttributes(mapOf("modifiers" to emptyList<Any>())))
+        assertEquals(false, invokeShouldPreserveDefaultAttributes(mapOf("replace" to true, "modifiers" to emptyList<Any>())))
+        assertEquals(false, invokeShouldPreserveDefaultAttributes(mapOf("preserve-defaults" to false, "modifiers" to emptyList<Any>())))
+    }
+
+    @Test
+    fun `should keep configured attribute modifiers when explicit replacement requested`() {
+        val modifiers = invokeAttributeModifiers(
+            mapOf(
+                "replace" to true,
+                "modifiers" to listOf(
+                    mapOf("type" to "attack_damage", "amount" to 3.0, "operation" to "add_value", "slot" to "mainhand")
+                )
+            ),
+            Material.NETHERITE_SWORD
+        )
+
+        assertEquals(1, modifiers.size)
+        assertEquals("baikiruto:attack_damage_0", modifiers.first()["id"])
+    }
+
+    @Test
     fun `should treat cmi rainbow one flag as byte persistent data`() {
         val value = invokePersistentCustomDataValue(NamespacedKey("cmilib", "cmirainbowarmor"), 1)
 
@@ -145,5 +182,14 @@ class DataComponentVersionAdapterTest {
 
     private fun invokePersistentCustomDataValue(key: NamespacedKey, value: Any): Any {
         return parsePersistentCustomDataValue.invoke(adapter, key, value)!!
+    }
+
+    private fun invokeAttributeModifiers(value: Any, material: Material): List<Map<String, Any>> {
+        @Suppress("UNCHECKED_CAST")
+        return normalizeAttributeModifiers.invoke(adapter, value, material) as List<Map<String, Any>>
+    }
+
+    private fun invokeShouldPreserveDefaultAttributes(value: Map<String, Any>): Boolean {
+        return shouldPreserveDefaultAttributeModifiers.invoke(adapter, value) as Boolean
     }
 }
