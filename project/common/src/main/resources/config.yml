@@ -12,6 +12,11 @@ settings:
     # MiniMessage is applied only when the runtime also provides MiniMessage classes.
     enabled: false
 
+update:
+  # Default item-refresh behavior when an item does not define meta.update.preserve-enchantments.
+  # Items can override this per item via meta.update.preserve-enchantments.
+  preserve-enchantments: true
+
 script:
   preheat:
     # Whether script preheat should be enabled during startup/reload.

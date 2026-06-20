@@ -570,17 +570,19 @@ object ItemDefinitionLoader {
         val scripts = parseMergedHooks(section, models)
         val eventData = parseMergedEventData(section, models)
         val defaultRuntimeData = LockedDisplaySignature.withLockedValues(
-            mergeRuntimeData(
-                modelDefaults,
-                displayRuntime,
-                itemDisplayRuntime,
-                parseDisplayLockMetadata(section, models),
-                itemComponents,
-                parseData(section.getConfigurationSection("data")),
-                parseDataMapper(section.getConfigurationSection("data-mapper")),
-                parseEffects(section.getConfigurationSection("effects")),
-                parseMetaEffects(section.getConfigurationSection("meta")),
-                parseI18n(section.getConfigurationSection("i18n"))
+            withDefaultUpdateRuntimeData(
+                mergeRuntimeData(
+                    modelDefaults,
+                    displayRuntime,
+                    itemDisplayRuntime,
+                    parseDisplayLockMetadata(section, models),
+                    itemComponents,
+                    parseData(section.getConfigurationSection("data")),
+                    parseDataMapper(section.getConfigurationSection("data-mapper")),
+                    parseEffects(section.getConfigurationSection("effects")),
+                    parseMetaEffects(section.getConfigurationSection("meta")),
+                    parseI18n(section.getConfigurationSection("i18n"))
+                )
             ),
             template
         )
@@ -1690,6 +1692,16 @@ object ItemDefinitionLoader {
 
     private fun parseUpdateMeta(section: ConfigurationSection?): Map<String, Any?> {
         return if (section == null) emptyMap() else parseUpdateMeta(sectionToMap(section))
+    }
+
+    private fun withDefaultUpdateRuntimeData(runtimeData: Map<String, Any?>): Map<String, Any?> {
+        if (ItemUpdateFeature.KEY_PRESERVE_ENCHANTMENTS in runtimeData) {
+            return runtimeData
+        }
+        return mergeRuntimeData(
+            runtimeData,
+            mapOf(ItemUpdateFeature.KEY_PRESERVE_ENCHANTMENTS to BaikirutoSettings.updatePreserveEnchantments)
+        )
     }
 
     private fun parseUpdateMeta(source: Map<String, Any?>): Map<String, Any?> {

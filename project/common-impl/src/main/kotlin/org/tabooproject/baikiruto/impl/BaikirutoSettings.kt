@@ -36,6 +36,9 @@ object BaikirutoSettings {
     @ConfigNode("settings.mini-message.enabled")
     var miniMessageEnabled = false
 
+    @ConfigNode("update.preserve-enchantments")
+    var updatePreserveEnchantments = true
+
     fun shouldDebugPlayer(player: Player?): Boolean {
         if (!debug || player == null) {
             return false

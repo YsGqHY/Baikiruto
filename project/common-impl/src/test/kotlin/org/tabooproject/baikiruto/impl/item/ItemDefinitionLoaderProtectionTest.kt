@@ -1,5 +1,6 @@
 package org.tabooproject.baikiruto.impl.item
 
+import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import org.tabooproject.baikiruto.impl.item.feature.ItemCooldownFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemDropEntityFeature
 import org.tabooproject.baikiruto.impl.item.feature.ItemProtectionFeature
@@ -112,6 +113,28 @@ class ItemDefinitionLoaderProtectionTest {
     }
 
     @Test
+    fun `should apply global preserve enchantments default only when item is missing it`() {
+        val previous = BaikirutoSettings.updatePreserveEnchantments
+        try {
+            BaikirutoSettings.updatePreserveEnchantments = true
+            val enabledDefault = invokeWithDefaultUpdateRuntimeData(emptyMap())
+            assertEquals(true, enabledDefault[ItemUpdateFeature.KEY_PRESERVE_ENCHANTMENTS])
+
+            BaikirutoSettings.updatePreserveEnchantments = false
+            val disabledDefault = invokeWithDefaultUpdateRuntimeData(emptyMap())
+            assertEquals(false, disabledDefault[ItemUpdateFeature.KEY_PRESERVE_ENCHANTMENTS])
+
+            BaikirutoSettings.updatePreserveEnchantments = true
+            val explicitDisabled = invokeWithDefaultUpdateRuntimeData(
+                mapOf(ItemUpdateFeature.KEY_PRESERVE_ENCHANTMENTS to false)
+            )
+            assertEquals(false, explicitDisabled[ItemUpdateFeature.KEY_PRESERVE_ENCHANTMENTS])
+        } finally {
+            BaikirutoSettings.updatePreserveEnchantments = previous
+        }
+    }
+
+    @Test
     fun `should parse cooldown cancelled trigger list`() {
         val parsed = invokeParseMetaEffects(
             mapOf(
@@ -139,6 +162,13 @@ class ItemDefinitionLoaderProtectionTest {
     @Suppress("UNCHECKED_CAST")
     private fun invokeParseMetaEffects(source: Map<String, Any?>): Map<String, Any?> {
         val method = ItemDefinitionLoader::class.java.getDeclaredMethod("parseMetaEffects", Map::class.java)
+        method.isAccessible = true
+        return method.invoke(ItemDefinitionLoader, source) as Map<String, Any?>
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun invokeWithDefaultUpdateRuntimeData(source: Map<String, Any?>): Map<String, Any?> {
+        val method = ItemDefinitionLoader::class.java.getDeclaredMethod("withDefaultUpdateRuntimeData", Map::class.java)
         method.isAccessible = true
         return method.invoke(ItemDefinitionLoader, source) as Map<String, Any?>
     }
