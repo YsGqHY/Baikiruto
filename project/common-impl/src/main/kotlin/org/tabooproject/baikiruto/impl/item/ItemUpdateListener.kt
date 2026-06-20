@@ -10,13 +10,18 @@ import taboolib.common.platform.Schedule
 import taboolib.common.platform.event.EventPriority
 import taboolib.common.platform.event.OptionalEvent
 import taboolib.common.platform.event.SubscribeEvent
+import taboolib.platform.util.submit
 
 object ItemUpdateListener {
 
     @Schedule(period = 100)
     fun onTick() {
         Bukkit.getOnlinePlayers().forEach { player ->
-            Baikiruto.api().getItemUpdater().checkUpdate(player, player.inventory)
+            player.submit {
+                if (player.isOnline) {
+                    Baikiruto.api().getItemUpdater().checkUpdate(player, player.inventory)
+                }
+            }
         }
     }
 

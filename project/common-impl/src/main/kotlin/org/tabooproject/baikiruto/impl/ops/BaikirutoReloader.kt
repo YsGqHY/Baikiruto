@@ -7,6 +7,7 @@ import org.tabooproject.baikiruto.impl.item.ItemDefinitionLoader
 import org.tabooproject.baikiruto.impl.item.ItemScriptPreheatService
 import taboolib.common.platform.function.console
 import taboolib.module.lang.sendLang
+import taboolib.platform.util.submit
 
 object BaikirutoReloader {
 
@@ -68,8 +69,13 @@ object BaikirutoReloader {
         if (!BaikirutoSettings.reloadOnlineUpdateEnabled) {
             return 0
         }
-        return Bukkit.getOnlinePlayers().sumOf { player ->
-            Baikiruto.api().getItemUpdater().checkUpdate(player, player.inventory)
+        return Bukkit.getOnlinePlayers().count { player ->
+            player.submit {
+                if (player.isOnline) {
+                    Baikiruto.api().getItemUpdater().checkUpdate(player, player.inventory)
+                }
+            }
+            true
         }
     }
 }

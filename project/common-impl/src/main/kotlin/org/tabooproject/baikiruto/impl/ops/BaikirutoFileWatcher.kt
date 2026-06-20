@@ -3,9 +3,9 @@ package org.tabooproject.baikiruto.impl.ops
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
+import taboolib.common.platform.Schedule
 import taboolib.common.platform.function.console
 import taboolib.common.platform.function.getDataFolder
-import taboolib.common.platform.function.submit
 import taboolib.module.lang.sendLang
 import java.io.File
 import java.nio.file.FileSystems
@@ -13,11 +13,16 @@ import java.nio.file.Path
 import java.nio.file.StandardWatchEventKinds
 import java.nio.file.WatchService
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 object BaikirutoFileWatcher {
 
     private val running = AtomicBoolean(false)
     private val reloadQueued = AtomicBoolean(false)
+    private val queuedAtTick = AtomicLong(0L)
+    private val schedulerTick = AtomicLong(0L)
+    @Volatile
+    private var queuedSource: String? = null
     private var watchService: WatchService? = null
     private var watcherThread: Thread? = null
 
@@ -58,6 +63,34 @@ object BaikirutoFileWatcher {
         }
         watcherThread = null
         watchService = null
+        reloadQueued.set(false)
+        queuedSource = null
+        queuedAtTick.set(0L)
+        schedulerTick.set(0L)
+    }
+
+    @Schedule(period = 1)
+    private fun flushQueuedReload() {
+        val currentTick = schedulerTick.incrementAndGet()
+        if (!reloadQueued.get()) {
+            return
+        }
+        val queueTick = queuedAtTick.get()
+        val delayTicks = BaikirutoSettings.watcherDebounceTicks.coerceAtLeast(1L)
+        if (currentTick - queueTick < delayTicks) {
+            return
+        }
+        val source = queuedSource ?: "watcher"
+        try {
+            BaikirutoReloader.reloadItemsFromWatcher(source)
+        } catch (ex: Throwable) {
+            console().sendLang("log-watcher-reload-failed", ex.message.orEmpty())
+        } finally {
+            if (queuedAtTick.compareAndSet(queueTick, 0L)) {
+                queuedSource = null
+                reloadQueued.set(false)
+            }
+        }
     }
 
     private fun watchLoop(watchPath: Path) {
@@ -78,19 +111,9 @@ object BaikirutoFileWatcher {
     }
 
     private fun queueReload(source: String) {
-        if (!reloadQueued.compareAndSet(false, true)) {
-            return
-        }
-        val delayTicks = BaikirutoSettings.watcherDebounceTicks.coerceAtLeast(1L)
-        submit(delay = delayTicks) {
-            try {
-                BaikirutoReloader.reloadItemsFromWatcher(source)
-            } catch (ex: Throwable) {
-                console().sendLang("log-watcher-reload-failed", ex.message.orEmpty())
-            } finally {
-                reloadQueued.set(false)
-            }
-        }
+        queuedSource = source
+        queuedAtTick.set(schedulerTick.get())
+        reloadQueued.set(true)
     }
 
     private fun itemsDir(): File {

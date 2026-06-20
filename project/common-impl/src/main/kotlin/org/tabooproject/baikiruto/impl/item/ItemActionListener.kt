@@ -74,12 +74,12 @@ import org.tabooproject.baikiruto.impl.item.feature.ItemUniqueFeature
 import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import taboolib.common.platform.Schedule
 import taboolib.common.platform.function.info
-import taboolib.common.platform.function.submit
 import taboolib.common.platform.event.EventPriority
 import taboolib.common.platform.event.SubscribeEvent
 import taboolib.platform.event.PlayerJumpEvent
 import taboolib.platform.util.isAir
 import taboolib.platform.util.sendLang
+import taboolib.platform.util.submit
 
 object ItemActionListener {
 
@@ -93,24 +93,27 @@ object ItemActionListener {
         }
         val currentTick = asyncTickClock
         Bukkit.getOnlinePlayers().forEach { player ->
-            player.inventory.contents.forEachIndexed { index, itemStack ->
-                val managed = resolve(itemStack) ?: return@forEachIndexed
-                val slot = resolveAsyncTickSlot(player, index)
-                if (!shouldDispatchAsyncTick(managed, player, slot, index, currentTick)) {
-                    return@forEachIndexed
-                }
-                val outcome = dispatch(
-                    managed = managed,
-                    triggers = listOf(ItemScriptTrigger.ASYNC_TICK),
-                    player = player,
-                    event = null,
-                    contextSeed = linkedMapOf(
-                        "slot" to slot,
-                        "slot_index" to index
+            player.submit {
+                if (!player.isOnline) return@submit
+                player.inventory.contents.forEachIndexed { index, itemStack ->
+                    val managed = resolve(itemStack) ?: return@forEachIndexed
+                    val slot = resolveAsyncTickSlot(player, index)
+                    if (!shouldDispatchAsyncTick(managed, player, slot, index, currentTick)) {
+                        return@forEachIndexed
+                    }
+                    val outcome = dispatch(
+                        managed = managed,
+                        triggers = listOf(ItemScriptTrigger.ASYNC_TICK),
+                        player = player,
+                        event = null,
+                        contextSeed = linkedMapOf(
+                            "slot" to slot,
+                            "slot_index" to index
+                        )
                     )
-                )
-                if (outcome.changed) {
-                    player.inventory.setItem(index, managed.stream.toItemStack())
+                    if (outcome.changed) {
+                        player.inventory.setItem(index, managed.stream.toItemStack())
+                    }
                 }
             }
         }
@@ -681,7 +684,7 @@ object ItemActionListener {
                 // 绑定变更或脚本修改后，延迟一 tick 回写到目标装备槽
                 val updated = managed.stream.toItemStack()
                 val targetSlotCopy = targetSlot
-                submit(delay = 1) {
+                player.submit(delay = 1) {
                     setArmorSlot(player, targetSlotCopy, updated)
                     player.updateInventory()
                 }
@@ -743,7 +746,7 @@ object ItemActionListener {
                     inventoryEvent.setCursor(updated)
                 } else {
                     val slotCopy = slot
-                    submit(delay = 1) {
+                    player.submit(delay = 1) {
                         setArmorSlot(player, slotCopy, updated)
                         player.updateInventory()
                     }
@@ -780,7 +783,7 @@ object ItemActionListener {
      */
     private fun scheduleArmorBindSync(player: Player, managed: ManagedItem, updated: ItemStack) {
         val targetSlot = resolveArmorSlot(updated) ?: return
-        submit(delay = 1) {
+        player.submit(delay = 1) {
             if (!player.isOnline) return@submit
             val current = when (targetSlot) {
                 "HEAD" -> player.inventory.helmet

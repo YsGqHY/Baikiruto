@@ -11,8 +11,8 @@ import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import taboolib.common.platform.Ghost
 import taboolib.common.platform.event.SubscribeEvent
 import taboolib.common.platform.function.info
-import taboolib.common.platform.function.submit
 import taboolib.library.configuration.ConfigurationSection
+import taboolib.platform.util.submit
 import java.util.Locale
 import kotlin.random.Random
 
@@ -32,7 +32,7 @@ object MythicHook {
             return
         }
         val entity = mob.entity as? LivingEntity ?: return
-        submit(delay = 5L) {
+        entity.submit(delay = 5L) {
             applyEquipments(equipmentSection, entity)
         }
     }

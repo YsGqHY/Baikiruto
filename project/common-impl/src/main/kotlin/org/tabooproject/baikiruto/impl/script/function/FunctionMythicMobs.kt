@@ -17,6 +17,7 @@ import org.tabooproject.fluxon.runtime.Type
 import org.tabooproject.fluxon.runtime.java.Export
 import taboolib.common.LifeCycle
 import taboolib.common.platform.Awake
+import taboolib.platform.util.submit
 import java.util.UUID
 
 /**
@@ -187,7 +188,11 @@ object FunctionMythicMobs {
             if (!isLoaded()) {
                 return
             }
-            Mythic.API.castSkill(caster, skillName, power = power)
+            caster.submit {
+                if (caster.isValid) {
+                    Mythic.API.castSkill(caster, skillName, power = power)
+                }
+            }
         }
 
         @Export(shared = true)
@@ -195,7 +200,11 @@ object FunctionMythicMobs {
             if (!isLoaded()) {
                 return
             }
-            Mythic.API.castSkill(caster, skillName, target, power = power)
+            caster.submit {
+                if (caster.isValid && target.isValid) {
+                    Mythic.API.castSkill(caster, skillName, target, power = power)
+                }
+            }
         }
 
         // ── 仇恨 ──
