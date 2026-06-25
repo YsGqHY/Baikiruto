@@ -216,6 +216,21 @@ meta:
 
 属性名自动标准化：转大写，`-` 转 `_`，自动补 `GENERIC_` 前缀。
 
+### preserve-default-attributes — 保留原版默认属性
+
+```yaml
+meta:
+  attribute:
+    preserve-default-attributes: true   # true（默认）保留；false 清除全部原版默认属性
+    mainhand:
+      attack_damage: "8"
+```
+
+- `true`（默认）：在原版默认属性基础上叠加自定义属性（如盔甲护甲值、武器基础攻速均保留）。
+- `false`：清除全部原版默认属性，只保留上方声明的自定义属性。
+- 别名：`preserve_default_attributes` / `preserveDefaultAttributes` / `keep-default-attributes` / `keep_default_attributes` / `keepDefaultAttributes`。
+- 优先级：若同时配置了 `attributes-replace-mode` 或 `attributes-replace`，以前者为准（向后兼容）；否则由 `preserve-default-attributes` 推导（`replace-mode = !preserve`）。
+
 ---
 
 ## potion — 药水
@@ -294,6 +309,30 @@ meta:
 ```
 
 key 为附魔名（不区分大小写），value 为等级（默认 1）。
+
+---
+
+## update — 重建保留策略
+
+`meta.update` 控制物品因版本哈希变化被重建时的保留行为。
+
+```yaml
+meta:
+  update:
+    preserve-enchantments: true   # 重建后是否保留原有附魔（默认由全局 config.yml 决定）
+```
+
+- `preserve-enchantments`：重建后将原 ItemStack 的附魔与存储附魔（书）复制到新物品。
+  - `true`：保留附魔；`false`：不保留，重建后附魔以配置为准。
+  - **未在物品中显式配置时**，回退到 `config.yml` 的 `update.preserve-enchantments`（默认 `true`）。
+  - 别名：`preserve_enchantments` / `preserveEnchantments` / `keep-enchantments` / `keep_enchantments` / `keepEnchantments`。
+
+### 全局默认（config.yml）
+
+```yaml
+update:
+  preserve-enchantments: true   # 全局默认；单物品 meta.update 可覆盖此值
+```
 
 ---
 

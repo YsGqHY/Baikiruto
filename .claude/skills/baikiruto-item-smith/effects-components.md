@@ -158,6 +158,10 @@ components:
 | `add_multiplied_base` / `add_scalar` | 基础值百分比加成 |
 | `add_multiplied_total` / `multiply_scalar_1` | 最终值百分比加成 |
 
+### 是否保留原版默认属性
+
+无论通过 `components.attribute_modifiers` 还是顶层 `meta.attribute` 配置属性，默认都会**保留原版默认属性**（如盔甲护甲值、武器基础攻速），仅在其上叠加自定义属性。如需清除原版默认属性，使用顶层 `meta.attribute.preserve-default-attributes: false`（或 `attributes-replace-mode: true`），详见 meta-reference.md 的 attribute 小节。
+
 ### 文本组件格式
 
 `custom_name` 和 `lore` 支持三种输入格式：
