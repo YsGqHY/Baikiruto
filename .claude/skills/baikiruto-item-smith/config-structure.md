@@ -282,6 +282,44 @@ scripts:
 
 `on_async_tick` 额外注入 `&ctx["slot_index"]`（背包 contents 下标），并可能使用 `HOTBAR` / `INVENTORY` 等聚合槽位。
 
+### 事件优先级
+
+默认情况下每个触发器使用内置的事件优先级（见下表）。可通过两种写法覆盖：
+
+**写法 1 — key 后缀 `@<priority>`**（后缀解析先于子映射）：
+```yaml
+event:
+  on_interact@lowest: |
+    return item
+  on_attack!!@high: |           # !! 与 @priority 可任意组合顺序
+    return item
+```
+
+**写法 2 — 子映射 `priority:` 字段**：
+```yaml
+event:
+  on_right_click:
+    type: fluxon
+    priority: highest           # 此字段仅在 key 后缀无 @priority 时生效
+    script: |
+      return item
+```
+
+有效值（不区分大小写，`-` 等同 `_`）：`lowest` / `low` / `normal` / `high` / `highest` / `monitor`。非法或空值回退到该触发器的默认优先级。
+
+各触发器默认优先级：
+
+| 默认优先级 | 触发器 |
+|------------|--------|
+| HIGHEST | `on_equip`、`on_unequip` |
+| HIGH | `on_interact`、`on_left_click`、`on_right_click`、`on_use` |
+| NORMAL | `on_respawn`、`on_async_tick` |
+| MONITOR | 其余所有事件触发器 |
+
+**注意**：`on_equip`/`on_unequip` 不支持优先级覆盖（因所有权校验与 HIGHEST 静态处理耦合），配置 `@priority` 对其无效。
+
+---
+
 ### 示例
 
 ```yaml
