@@ -178,6 +178,38 @@ class DefaultItemUpdaterCheckUpdateTest {
     }
 
     @Test
+    fun `should run enchant preservation on state-preserved item not on raw rebuilt item`() {
+        // 回归测试：状态保留器先执行（如 guibind 重建物品），
+        // 附魔保留器再对状态保留器的输出进行操作，而非对原始重建结果操作。
+        // preserve-enchantments=false 以避免在无头测试环境中调用 Bukkit API；
+        // 核心断言是状态保留器的结果（EMERALD）被最终返回。
+        val origin = ItemStack(Material.STONE).apply { amount = 5 }
+        val sourceStream = TestStream("test:item", "old", origin)
+        val rebuiltStream = TestStream(
+            "test:item", "new", ItemStack(Material.DIAMOND),
+            linkedMapOf("update-preserve-enchantments" to false)
+        )
+        val item = TestItem("test:item", rebuiltStream, AtomicInteger())
+        // 状态保留器把物品换成 EMERALD（模拟 guibind 重建行为）
+        DefaultItemUpdater.installStatePreserverForTesting(
+            ItemUpdateStatePreserver { _, rebuilt, _ ->
+                rebuilt.clone().apply { type = Material.EMERALD }
+            }
+        )
+
+        val previous = installApi(TestApi(sourceStream, item))
+        try {
+            val result = DefaultItemUpdater.checkUpdate(null, origin)
+            // 最终物品应为 EMERALD（状态保留器结果），
+            // 证明附魔保留是在状态保留器输出上执行的
+            assertEquals(Material.EMERALD, result.type)
+            assertEquals(5, result.amount)
+        } finally {
+            restoreApi(previous)
+        }
+    }
+
+    @Test
     fun `should enable enchantment preservation flag in runtime data`() {
         val stream = TestStream(
             "test:item",

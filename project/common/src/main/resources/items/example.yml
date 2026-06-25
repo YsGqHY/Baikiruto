@@ -243,6 +243,17 @@ items:
         mainhand:
           attack_damage: "6"
           attack_speed: "+10%"
+      # 是否清除原版默认属性。
+      # false(默认): 保留原版默认属性(如盔甲护甲值、武器基础攻速)，仅在其上叠加上面的自定义属性
+      # true: 清除全部默认属性，只保留上面声明的自定义属性
+      # 别名 attributes-replace 与本字段等价
+      attributes-replace-mode: false
+      # 是否保留原版默认属性（attributes-replace-mode 的语义反义，更直观的写法）。
+      # true(默认): 保留原版默认属性，仅叠加自定义属性
+      # false: 清除全部默认属性，只保留自定义属性
+      # 别名: preserve_default_attributes / keep-default-attributes
+      # 注意: 若同时配置了 attributes-replace-mode/attributes-replace，则以前者为准。
+      # preserve-default-attributes: true
       can-destroy:
         - STONE
         - DEEPSLATE

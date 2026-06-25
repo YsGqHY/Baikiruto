@@ -599,6 +599,56 @@ class ItemDefinitionLoaderCompatibilityTest {
         assertTrue(metas.first().scripts.has(org.tabooproject.baikiruto.core.item.ItemScriptTrigger.BUILD))
     }
 
+    @Test
+    fun `should derive replace mode false from preserve-default-attributes true in map`() {
+        val parsed = invokeMapMethod(
+            "parseMetaEffects",
+            mapOf(
+                "attribute" to mapOf("mainhand" to mapOf("attack_damage" to "6")),
+                "preserve-default-attributes" to true
+            )
+        )
+        assertEquals(false, parsed["attributes-replace-mode"])
+    }
+
+    @Test
+    fun `should derive replace mode true from preserve-default-attributes false in map`() {
+        val parsed = invokeMapMethod(
+            "parseMetaEffects",
+            mapOf(
+                "attribute" to mapOf("mainhand" to mapOf("attack_damage" to "6")),
+                "preserve_default_attributes" to false
+            )
+        )
+        assertEquals(true, parsed["attributes-replace-mode"])
+    }
+
+    @Test
+    fun `should prefer explicit attributes-replace-mode over preserve-default-attributes in map`() {
+        val parsed = invokeMapMethod(
+            "parseMetaEffects",
+            mapOf(
+                "attribute" to mapOf("mainhand" to mapOf("attack_damage" to "6")),
+                "attributes-replace-mode" to true,
+                "preserve-default-attributes" to true
+            )
+        )
+        // 显式 replace-mode=true 应优先，不被 preserve 反义覆盖
+        assertEquals(true, parsed["attributes-replace-mode"])
+    }
+
+    @Test
+    fun `should derive replace mode from preserve-default-attributes in section`() {
+        val section = sectionOf(
+            mapOf(
+                "attribute" to mapOf("mainhand" to mapOf("attack_damage" to "6")),
+                "preserve-default-attributes" to false
+            )
+        )
+        val parsed = invokeSectionMapMethod("parseMetaEffects", section)
+        assertEquals(true, parsed["attributes-replace-mode"])
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun invokeMapMethod(name: String, source: Map<String, Any?>): Map<String, Any?> {
         val method = ItemDefinitionLoader::class.java.getDeclaredMethod(name, Map::class.java)

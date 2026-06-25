@@ -76,10 +76,12 @@ object DefaultItemUpdater : ItemUpdater {
         val rebuiltStack = rebuiltStream.toItemStack().apply {
             amount = itemStack.amount.coerceAtLeast(1)
         }
-        val enchantPreservedStack = ItemEnchantPreserver.preserveIfEnabled(itemStack, rebuiltStack, rebuiltStream).apply {
+        // 先让 guibind 等状态保留器完成重建（可能返回全新构造的 ItemStack），
+        // 再叠加附魔保留，避免状态保留器把刚复制的附魔丢弃。
+        val statePreservedStack = statePreserver.preserve(itemStack, rebuiltStack, player).apply {
             amount = itemStack.amount.coerceAtLeast(1)
         }
-        val preservedStack = statePreserver.preserve(itemStack, enchantPreservedStack, player).apply {
+        val preservedStack = ItemEnchantPreserver.preserveIfEnabled(itemStack, statePreservedStack, rebuiltStream).apply {
             amount = itemStack.amount.coerceAtLeast(1)
         }
         return true to preservedStack

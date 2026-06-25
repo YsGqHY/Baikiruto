@@ -1313,9 +1313,23 @@ object ItemDefinitionLoader {
         if (attributes.isNotEmpty()) {
             effects["attributes"] = attributes
         }
+        // 优先使用显式的 attributes-replace-mode/attributes-replace（向后兼容），
+        // 否则用 preserve-default-attributes 推导（保留默认属性 = 非替换模式）。
         if (section.contains("attributes-replace-mode") || section.contains("attributes-replace")) {
             effects["attributes-replace-mode"] = section.getBoolean("attributes-replace-mode",
                 section.getBoolean("attributes-replace", false))
+        } else {
+            val preserveKey = sequenceOf(
+                "preserve-default-attributes",
+                "preserve_default_attributes",
+                "preserveDefaultAttributes",
+                "keep-default-attributes",
+                "keep_default_attributes",
+                "keepDefaultAttributes"
+            ).firstOrNull { section.contains(it) }
+            if (preserveKey != null) {
+                effects["attributes-replace-mode"] = !section.getBoolean(preserveKey, true)
+            }
         }
 
         parsePotion(section.getConfigurationSection("potion")).forEach { (key, value) ->
@@ -1465,8 +1479,21 @@ object ItemDefinitionLoader {
         if (attributes.isNotEmpty()) {
             effects["attributes"] = attributes
         }
+        // 优先使用显式的 attributes-replace-mode/attributes-replace（向后兼容），
+        // 否则用 preserve-default-attributes 推导（保留默认属性 = 非替换模式）。
         val replaceMode = asBoolean(section["attributes-replace-mode"])
             ?: asBoolean(section["attributes-replace"])
+            ?: asBoolean(
+                readAlias(
+                    section,
+                    "preserve-default-attributes",
+                    "preserve_default_attributes",
+                    "preserveDefaultAttributes",
+                    "keep-default-attributes",
+                    "keep_default_attributes",
+                    "keepDefaultAttributes"
+                )
+            )?.let { preserve -> !preserve }
         if (replaceMode != null) {
             effects["attributes-replace-mode"] = replaceMode
         }
