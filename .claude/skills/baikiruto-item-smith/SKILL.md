@@ -3,9 +3,10 @@ name: Baikiruto Item Smith
 description: >
   在 Baikiruto 插件中编写物品 YAML 配置的完整自包含知识库。涵盖物品配置结构（group/model/display/item）、
   name/lore 分段系统与占位符、data 数据系统、effects 效果、meta 内置元数据（durability/cooldown/unique/
-  drop/protection/async-tick/attribute/potion/skull/spawner）、metas 自定义脚本 Meta、components 1.21+ 数据组件、
-  i18n 国际化、!! 锁定机制、version-hash 版本控制、冷却取消策略、30 种事件触发器（含 death/kill/hurt/
-  sneak/sprint/jump/respawn/equip/unequip/shoot/projectile_hit/async_tick 等触发器）。无需依赖其他 Skill 即可编写正确的物品配置。
+  drop/protection/async-tick/attribute/potion/skull/spawner/update）、保留原版默认属性（preserve-default-attributes）、
+  重建保留附魔（update.preserve-enchantments）、metas 自定义脚本 Meta、components 1.21+ 数据组件、
+  i18n 国际化、!! 锁定机制、version-hash 版本控制、冷却取消策略、事件优先级（@priority 后缀与 priority 字段）、
+  30 种事件触发器（含 death/kill/hurt/sneak/sprint/jump/respawn/equip/unequip/shoot/projectile_hit/async_tick 等触发器）。无需依赖其他 Skill 即可编写正确的物品配置。
 globs:
   - "**/items/**/*.yml"
   - "**/items/**/*.yaml"
@@ -34,9 +35,9 @@ globs:
 
 ## 知识文件
 
-- `config-structure.md` -- 文件组织、__group__、models、displays、items 完整字段
+- `config-structure.md` -- 文件组织、__group__、models、displays、items 完整字段、事件优先级
 - `name-lore.md` -- name/lore 分段系统、Display 模板、占位符、data-mapper
-- `meta-reference.md` -- 内置 Meta 类型（durability/cooldown/unique/drop/protection/async-tick/attribute/potion/skull/spawner）
+- `meta-reference.md` -- 内置 Meta 类型（durability/cooldown/unique/drop/protection/async-tick/attribute（含 preserve-default-attributes）/potion/skull/spawner/update）
 - `effects-components.md` -- effects 效果、components 1.21+ 数据组件
 - `advanced.md` -- i18n 国际化、!! 锁定机制、version-hash、metas 自定义 Meta
 
@@ -101,9 +102,12 @@ items:
           causes:
             - fire
       attribute:
+        preserve-default-attributes: true
         mainhand:
           attack_damage: "8"
           attack_speed: "+15%"
+      update:
+        preserve-enchantments: true
     scripts:
       build: |
         return item
@@ -112,7 +116,7 @@ items:
         &ops.damage(1)
         &event.getEntity().setFireTicks(60)
         return item
-      on_right_click!!: |
+      on_right_click!!@high: |
         if (&ops.cooldown() > 0) {
             &player?.sendMessage("&cCooldown!")
             return item
