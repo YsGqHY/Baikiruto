@@ -105,6 +105,81 @@ class ItemScriptHooksTest {
     }
 
     @Test
+    fun `should parse priority suffix from trigger key`() {
+        val hooks = ItemScriptHooks.from(
+            raw = mapOf(
+                "on_interact@highest" to "interact()",
+                "on_attack@LOW" to "attack()",
+                "on_use" to "use()"
+            )
+        )
+        assertEquals("highest", hooks.priority(ItemScriptTrigger.INTERACT))
+        assertEquals("low", hooks.priority(ItemScriptTrigger.ATTACK))
+        assertEquals(null, hooks.priority(ItemScriptTrigger.USE))
+    }
+
+    @Test
+    fun `should parse priority from source priority field`() {
+        val hooks = ItemScriptHooks.fromSources(
+            raw = mapOf(
+                "on_use" to BaikirutoScriptSource(content = "use()", priority = "NORMAL"),
+                "on_attack" to BaikirutoScriptSource(content = "attack()", priority = "monitor")
+            )
+        )
+        assertEquals("normal", hooks.priority(ItemScriptTrigger.USE))
+        assertEquals("monitor", hooks.priority(ItemScriptTrigger.ATTACK))
+    }
+
+    @Test
+    fun `should prefer key suffix priority over source priority field`() {
+        val hooks = ItemScriptHooks.fromSources(
+            raw = mapOf(
+                "on_interact@lowest" to BaikirutoScriptSource(content = "interact()", priority = "highest")
+            )
+        )
+        // key suffix wins
+        assertEquals("lowest", hooks.priority(ItemScriptTrigger.INTERACT))
+    }
+
+    @Test
+    fun `should parse cancel marker combined with priority suffix`() {
+        val hooks = ItemScriptHooks.from(
+            raw = mapOf(
+                "on_interact!!@high" to "cancelInteract()",
+                "on_attack@normal!!" to "cancelAttack()"
+            )
+        )
+        assertTrue(hooks.shouldCancel(ItemScriptTrigger.INTERACT))
+        assertEquals("high", hooks.priority(ItemScriptTrigger.INTERACT))
+        assertTrue(hooks.shouldCancel(ItemScriptTrigger.ATTACK))
+        assertEquals("normal", hooks.priority(ItemScriptTrigger.ATTACK))
+    }
+
+    @Test
+    fun `should collect configured priorities across triggers and locales`() {
+        val hooks = ItemScriptHooks.from(
+            raw = mapOf("on_use@highest" to "use()"),
+            i18nRaw = mapOf(
+                "zh_cn" to mapOf("on_use@low" to "zhUse()"),
+                "en_us" to mapOf("on_attack@monitor" to "enAttack()")
+            )
+        )
+        val priorities = hooks.configuredPriorities()
+        assertEquals(setOf("highest", "low"), priorities[ItemScriptTrigger.USE])
+        assertEquals(setOf("monitor"), priorities[ItemScriptTrigger.ATTACK])
+    }
+
+    @Test
+    fun `should resolve localized priority with fallback`() {
+        val hooks = ItemScriptHooks.from(
+            raw = mapOf("on_use@highest" to "use()"),
+            i18nRaw = mapOf("zh_cn" to mapOf("on_use@low" to "zhUse()"))
+        )
+        assertEquals("low", hooks.priority(ItemScriptTrigger.USE, "zh-CN"))
+        assertEquals("highest", hooks.priority(ItemScriptTrigger.USE, "en-US"))
+    }
+
+    @Test
     fun `should parse cancel marker from trigger key`() {
         val hooks = ItemScriptHooks.from(
             raw = mapOf(

@@ -75,7 +75,11 @@ import org.tabooproject.baikiruto.impl.BaikirutoSettings
 import taboolib.common.platform.Schedule
 import taboolib.common.platform.function.info
 import taboolib.common.platform.event.EventPriority
+import taboolib.common.platform.event.ProxyListener
 import taboolib.common.platform.event.SubscribeEvent
+import taboolib.common.platform.function.registerBukkitListener
+import taboolib.common.platform.function.unregisterListener
+import org.bukkit.event.Event
 import taboolib.platform.event.PlayerJumpEvent
 import taboolib.platform.util.isAir
 import taboolib.platform.util.sendLang
@@ -84,6 +88,278 @@ import taboolib.platform.util.submit
 object ItemActionListener {
 
     private var asyncTickClock = 0L
+
+    // ── 覆盖监听器管理 ──
+    // 键：(eventClass, EventPriority)，值：动态注册的 ProxyListener
+    private val overlayListeners = mutableMapOf<Pair<Class<*>, EventPriority>, ProxyListener>()
+
+    /**
+     * 触发器 → Bukkit 事件类映射（仅限有 Bukkit 事件的触发器）。
+     * 多个触发器可以共享同一事件类（如 INTERACT/LEFT_CLICK/RIGHT_CLICK 都来自 PlayerInteractEvent）。
+     */
+    private val triggerEventClass: Map<ItemScriptTrigger, Class<*>> = mapOf(
+        ItemScriptTrigger.INTERACT to PlayerInteractEvent::class.java,
+        ItemScriptTrigger.LEFT_CLICK to PlayerInteractEvent::class.java,
+        ItemScriptTrigger.RIGHT_CLICK to PlayerInteractEvent::class.java,
+        ItemScriptTrigger.USE to PlayerInteractEvent::class.java,
+        ItemScriptTrigger.RIGHT_CLICK_ENTITY to PlayerInteractEntityEvent::class.java,
+        ItemScriptTrigger.ATTACK to EntityDamageByEntityEvent::class.java,
+        ItemScriptTrigger.DAMAGE to PlayerItemDamageEvent::class.java,
+        ItemScriptTrigger.BLOCK_BREAK to BlockBreakEvent::class.java,
+        ItemScriptTrigger.ITEM_BREAK to PlayerItemBreakEvent::class.java,
+        ItemScriptTrigger.CONSUME to PlayerItemConsumeEvent::class.java,
+        ItemScriptTrigger.PICKUP to EntityPickupItemEvent::class.java,
+        ItemScriptTrigger.DROP to PlayerDropItemEvent::class.java,
+        ItemScriptTrigger.SWAP_TO_MAINHAND to PlayerSwapHandItemsEvent::class.java,
+        ItemScriptTrigger.SWAP_TO_OFFHAND to PlayerSwapHandItemsEvent::class.java,
+        ItemScriptTrigger.INVENTORY_CLICK to InventoryClickEvent::class.java,
+        ItemScriptTrigger.EQUIP to InventoryClickEvent::class.java,
+        ItemScriptTrigger.UNEQUIP to InventoryClickEvent::class.java,
+        ItemScriptTrigger.DEATH to PlayerDeathEvent::class.java,
+        ItemScriptTrigger.KILL to EntityDeathEvent::class.java,
+        ItemScriptTrigger.HURT to EntityDamageEvent::class.java,
+        ItemScriptTrigger.SHOOT to ProjectileLaunchEvent::class.java,
+        ItemScriptTrigger.PROJECTILE_HIT to ProjectileHitEvent::class.java,
+        ItemScriptTrigger.SNEAK to PlayerToggleSneakEvent::class.java,
+        ItemScriptTrigger.SPRINT to PlayerToggleSprintEvent::class.java,
+        ItemScriptTrigger.JUMP to PlayerJumpEvent::class.java,
+        ItemScriptTrigger.RESPAWN to PlayerRespawnEvent::class.java,
+        ItemScriptTrigger.SELECT to PlayerItemHeldEvent::class.java
+    )
+
+    // 事件类 → 触发器列表（反查表）
+    private val eventClassTriggers: Map<Class<*>, List<ItemScriptTrigger>> by lazy {
+        val result = mutableMapOf<Class<*>, MutableList<ItemScriptTrigger>>()
+        triggerEventClass.forEach { (trigger, clazz) ->
+            result.getOrPut(clazz) { mutableListOf() } += trigger
+        }
+        result
+    }
+
+    /**
+     * EQUIP/UNEQUIP 触发器不支持优先级覆盖，因为它们的所有权校验与回写逻辑
+     * 绑定在 HIGHEST 静态监听器（onArmorClick）中，分离执行会导致竞态与数据丢失。
+     */
+    private val NON_OVERRIDABLE_TRIGGERS = setOf(ItemScriptTrigger.EQUIP, ItemScriptTrigger.UNEQUIP)
+
+    /**
+     * 刷新覆盖监听器：先注销所有旧的，然后扫描全部物品，
+     * 为每个非默认优先级的 (eventClass, priority) 组合注册一个新的覆盖监听器。
+     * 在每次 reload 后调用。
+     */
+    fun refreshOverlayListeners() {
+        destroyOverlayListeners()
+        val items = Baikiruto.apiOrNull()?.getItemRegistry()?.values() ?: return
+        // 收集所有需要覆盖监听器的 (eventClass, priority) 对
+        val needed = mutableSetOf<Pair<Class<*>, EventPriority>>()
+        items.forEach { item ->
+            collectNonDefaultPriorities(item).forEach { (trigger, priority) ->
+                val clazz = triggerEventClass[trigger] ?: return@forEach
+                needed += clazz to priority
+            }
+        }
+        needed.forEach { (clazz, priority) ->
+            val listener = registerBukkitListener(clazz, priority, ignoreCancelled = false) { event ->
+                handleOverlayEvent(event, priority)
+            }
+            overlayListeners[clazz to priority] = listener
+        }
+    }
+
+    fun destroyOverlayListeners() {
+        overlayListeners.values.forEach { unregisterListener(it) }
+        overlayListeners.clear()
+    }
+
+    /**
+     * 覆盖监听器的事件处理入口：仅派发配置了该优先级的触发器脚本。
+     */
+    private fun handleOverlayEvent(event: Any, priority: EventPriority) {
+        val triggers = eventClassTriggers[event.javaClass] ?: return
+        val phase = DispatchPhase.Override(priority)
+        when (event) {
+            is PlayerInteractEvent -> {
+                if (event.hand == EquipmentSlot.OFF_HAND && event.item == null) return
+                if (event.isCancelled && event.action != Action.LEFT_CLICK_AIR && event.action != Action.RIGHT_CLICK_AIR) return
+                val managed = resolve(event.item) ?: return
+                val activeTriggers = mutableListOf<ItemScriptTrigger>()
+                if (ItemScriptTrigger.INTERACT in triggers) activeTriggers += ItemScriptTrigger.INTERACT
+                when (event.action) {
+                    Action.LEFT_CLICK_AIR, Action.LEFT_CLICK_BLOCK -> {
+                        if (ItemScriptTrigger.LEFT_CLICK in triggers) activeTriggers += ItemScriptTrigger.LEFT_CLICK
+                    }
+                    Action.RIGHT_CLICK_AIR, Action.RIGHT_CLICK_BLOCK -> {
+                        if (ItemScriptTrigger.RIGHT_CLICK in triggers) activeTriggers += ItemScriptTrigger.RIGHT_CLICK
+                        if (ItemScriptTrigger.USE in triggers) activeTriggers += ItemScriptTrigger.USE
+                    }
+                    else -> return
+                }
+                val outcome = dispatch(managed, activeTriggers, event.player, event, phase = phase)
+                if (outcome.cancelled) event.isCancelled = true
+                if (outcome.changed) {
+                    val updated = managed.stream.toItemStack()
+                    if (event.hand == EquipmentSlot.OFF_HAND) {
+                        event.player.inventory.setItemInOffHand(updated)
+                    } else {
+                        event.player.inventory.setItemInMainHand(updated)
+                    }
+                }
+            }
+            is PlayerInteractEntityEvent -> {
+                if (event.hand != EquipmentSlot.HAND) return
+                val managed = resolve(event.player.inventory.itemInMainHand) ?: return
+                val outcome = dispatch(managed, listOf(ItemScriptTrigger.RIGHT_CLICK_ENTITY), event.player, event, phase = phase)
+                if (outcome.cancelled) event.isCancelled = true
+                if (outcome.changed) event.player.inventory.setItemInMainHand(managed.stream.toItemStack())
+            }
+            is EntityDamageByEntityEvent -> {
+                val player = event.damager as? Player ?: return
+                val managed = resolve(player.inventory.itemInMainHand) ?: return
+                val outcome = dispatch(managed, listOf(ItemScriptTrigger.ATTACK), player, event, phase = phase)
+                if (outcome.cancelled) event.isCancelled = true
+                if (outcome.changed) player.inventory.setItemInMainHand(managed.stream.toItemStack())
+            }
+            is PlayerItemDamageEvent -> {
+                val currentItem = findCurrentItem(event.player, event.item) ?: event.item
+                val managed = resolve(currentItem) ?: return
+                val outcome = dispatch(managed, listOf(ItemScriptTrigger.DAMAGE), event.player, event, phase = phase)
+                if (outcome.cancelled) event.isCancelled = true
+                if (outcome.changed) replacePlayerItem(event.player, currentItem, managed.stream.toItemStack())
+            }
+            is BlockBreakEvent -> {
+                val managed = resolve(event.player.inventory.itemInMainHand) ?: return
+                val outcome = dispatch(managed, listOf(ItemScriptTrigger.BLOCK_BREAK), event.player, event, phase = phase)
+                if (outcome.cancelled) event.isCancelled = true
+                if (outcome.changed) event.player.inventory.setItemInMainHand(managed.stream.toItemStack())
+            }
+            is PlayerItemBreakEvent -> {
+                val managed = resolve(event.brokenItem) ?: return
+                dispatch(managed, listOf(ItemScriptTrigger.ITEM_BREAK), event.player, event, phase = phase)
+            }
+            is PlayerItemConsumeEvent -> {
+                val managed = resolve(event.item) ?: return
+                val outcome = dispatch(managed, listOf(ItemScriptTrigger.CONSUME, ItemScriptTrigger.USE), event.player, event, phase = phase)
+                if (outcome.cancelled) event.isCancelled = true
+                if (outcome.changed) {
+                    val updated = managed.stream.toItemStack()
+                    if (event.player.inventory.itemInMainHand == event.item) {
+                        event.player.inventory.setItemInMainHand(updated)
+                    } else if (event.player.inventory.itemInOffHand == event.item) {
+                        event.player.inventory.setItemInOffHand(updated)
+                    }
+                }
+            }
+            is EntityPickupItemEvent -> {
+                val player = event.entity as? Player ?: return
+                val managed = resolve(event.item.itemStack) ?: return
+                val outcome = dispatch(managed, listOf(ItemScriptTrigger.PICKUP), player, event, phase = phase)
+                if (outcome.cancelled) event.isCancelled = true
+                if (outcome.changed) event.item.itemStack = managed.stream.toItemStack()
+            }
+            is PlayerDropItemEvent -> {
+                val managed = resolve(event.itemDrop.itemStack) ?: return
+                val outcome = dispatch(managed, listOf(ItemScriptTrigger.DROP), event.player, event, phase = phase)
+                if (outcome.cancelled) event.isCancelled = true
+                if (outcome.changed) event.itemDrop.itemStack = managed.stream.toItemStack()
+            }
+            is PlayerSwapHandItemsEvent -> {
+                resolve(event.mainHandItem)?.let { managed ->
+                    val outcome = dispatch(managed, listOf(ItemScriptTrigger.SWAP_TO_MAINHAND), event.player, event, phase = phase)
+                    if (outcome.cancelled) event.isCancelled = true
+                    if (outcome.changed) event.mainHandItem = managed.stream.toItemStack()
+                }
+                resolve(event.offHandItem)?.let { managed ->
+                    val outcome = dispatch(managed, listOf(ItemScriptTrigger.SWAP_TO_OFFHAND), event.player, event, phase = phase)
+                    if (outcome.cancelled) event.isCancelled = true
+                    if (outcome.changed) event.offHandItem = managed.stream.toItemStack()
+                }
+            }
+            is InventoryClickEvent -> {
+                val player = event.whoClicked as? Player ?: return
+                if (ItemScriptTrigger.INVENTORY_CLICK in triggers) {
+                    resolve(event.currentItem)?.let { managed ->
+                        val outcome = dispatch(managed, listOf(ItemScriptTrigger.INVENTORY_CLICK), player, event, phase = phase)
+                        if (outcome.cancelled) event.isCancelled = true
+                        if (outcome.changed) event.currentItem = managed.stream.toItemStack()
+                    }
+                }
+            }
+            is PlayerDeathEvent -> {
+                dispatchTrackedOverlay(event.entity, listOf(ItemScriptTrigger.DEATH), event, phase)
+            }
+            is EntityDeathEvent -> {
+                val killer = event.entity.killer ?: return
+                val managed = resolve(killer.inventory.itemInMainHand) ?: return
+                val outcome = dispatch(managed, listOf(ItemScriptTrigger.KILL), killer, event, phase = phase)
+                if (outcome.changed) killer.inventory.setItemInMainHand(managed.stream.toItemStack())
+            }
+            is EntityDamageEvent -> {
+                val player = event.entity as? Player ?: return
+                dispatchTrackedOverlay(player, listOf(ItemScriptTrigger.HURT), event, phase)
+            }
+            is ProjectileLaunchEvent -> {
+                val shooter = event.entity.shooter as? Player ?: return
+                val managed = resolve(shooter.inventory.itemInMainHand) ?: return
+                val outcome = dispatch(managed, listOf(ItemScriptTrigger.SHOOT), shooter, event, phase = phase)
+                if (outcome.cancelled) event.isCancelled = true
+                if (outcome.changed) shooter.inventory.setItemInMainHand(managed.stream.toItemStack())
+            }
+            is ProjectileHitEvent -> {
+                val shooter = event.entity.shooter as? Player ?: return
+                val managed = resolve(shooter.inventory.itemInMainHand) ?: return
+                val outcome = dispatch(managed, listOf(ItemScriptTrigger.PROJECTILE_HIT), shooter, event, phase = phase)
+                if (outcome.changed) shooter.inventory.setItemInMainHand(managed.stream.toItemStack())
+            }
+            is PlayerToggleSneakEvent -> {
+                dispatchTrackedOverlay(event.player, listOf(ItemScriptTrigger.SNEAK), event, phase)
+            }
+            is PlayerToggleSprintEvent -> {
+                dispatchTrackedOverlay(event.player, listOf(ItemScriptTrigger.SPRINT), event, phase)
+            }
+            is PlayerJumpEvent -> {
+                dispatchTrackedOverlay(event.player, listOf(ItemScriptTrigger.JUMP), event, phase)
+            }
+            is PlayerRespawnEvent -> {
+                dispatchTrackedOverlay(event.player, listOf(ItemScriptTrigger.RESPAWN), event, phase)
+            }
+            is PlayerItemHeldEvent -> {
+                val managed = resolve(event.player.inventory.getItem(event.newSlot)) ?: return
+                dispatch(managed, listOf(ItemScriptTrigger.SELECT), event.player, event, phase = phase)
+            }
+        }
+    }
+
+    private fun dispatchTrackedOverlay(player: Player, triggers: List<ItemScriptTrigger>, event: Any?, phase: DispatchPhase) {
+        collectTrackedStreams(player).forEach { trackedItem ->
+            val item = Baikiruto.api().getItem(trackedItem.stream.itemId) ?: return@forEach
+            val managed = ManagedItem(item, trackedItem.stream)
+            val context = linkedMapOf<String, Any?>("slot" to trackedItem.slot)
+            val outcome = dispatch(managed, triggers, player, event, context, phase)
+            if (outcome.changed) {
+                trackedItem.update(managed.stream.toItemStack())
+            }
+        }
+    }
+
+    /**
+     * 收集物品（含 metas）中所有配置了非默认优先级的触发器。
+     */
+    private fun collectNonDefaultPriorities(item: Item): Map<ItemScriptTrigger, EventPriority> {
+        val result = mutableMapOf<ItemScriptTrigger, EventPriority>()
+        fun scan(hooks: org.tabooproject.baikiruto.core.item.ItemScriptHooks) {
+            ItemScriptTrigger.values().forEach { trigger ->
+                if (trigger in NON_OVERRIDABLE_TRIGGERS) return@forEach
+                val configured = ItemScriptPriorityDefaults.parse(hooks.priority(trigger)) ?: return@forEach
+                val default = ItemScriptPriorityDefaults.getDefault(trigger)
+                if (configured != default) {
+                    result[trigger] = configured
+                }
+            }
+        }
+        scan(item.scripts)
+        item.metas.forEach { scan(it.scripts) }
+        return result
+    }
 
     @Schedule(period = 1)
     fun onAsyncTick() {
@@ -940,7 +1216,8 @@ object ItemActionListener {
         triggers: List<ItemScriptTrigger>,
         player: Player?,
         event: Any?,
-        contextSeed: Map<String, Any?> = emptyMap()
+        contextSeed: Map<String, Any?> = emptyMap(),
+        phase: DispatchPhase = DispatchPhase.Default
     ): DispatchOutcome {
         val locale = player?.let { resolveLocale(it) }
         val baseContext = linkedMapOf<String, Any?>()
@@ -957,6 +1234,10 @@ object ItemActionListener {
         var save = false
         var cancelled = false
         triggers.forEach { trigger ->
+            // 优先级过滤：仅在 effective 优先级匹配当前派发阶段时执行
+            if (!shouldProcessInPhase(managed.item, trigger, locale, phase)) {
+                return@forEach
+            }
             val triggerContext = LinkedHashMap(baseContext)
             val triggerEvent = createTriggerEvent(
                 stream = managed.stream,
@@ -985,6 +1266,43 @@ object ItemActionListener {
             save = save,
             cancelled = cancelled
         )
+    }
+
+    /**
+     * 判断给定触发器是否应在当前派发阶段执行。
+     * effective = configured ?: default。
+     * - Default 阶段（静态监听器）：仅当 effective == default 时处理（未配置或配置为默认值）。
+     * - Override 阶段（动态覆盖监听器）：仅当 configured == 该阶段优先级时处理。
+     */
+    private fun shouldProcessInPhase(
+        item: Item,
+        trigger: ItemScriptTrigger,
+        locale: String?,
+        phase: DispatchPhase
+    ): Boolean {
+        // EQUIP/UNEQUIP 的所有权校验与回写逻辑绑定在 HIGHEST 静态监听器上，
+        // 不支持优先级覆盖，因此始终只在默认阶段处理。
+        if (trigger in NON_OVERRIDABLE_TRIGGERS) {
+            return phase == DispatchPhase.Default
+        }
+        val default = ItemScriptPriorityDefaults.getDefault(trigger)
+        val configured = resolveConfiguredPriority(item, trigger, locale)
+        return when (phase) {
+            DispatchPhase.Default -> configured == null || configured == default
+            is DispatchPhase.Override -> configured != null && configured == phase.priority
+        }
+    }
+
+    /**
+     * 解析物品（含 meta）为该触发器配置的事件优先级，未配置返回 null。
+     * 物品自身配置优先于 meta 配置。
+     */
+    private fun resolveConfiguredPriority(item: Item, trigger: ItemScriptTrigger, locale: String?): EventPriority? {
+        ItemScriptPriorityDefaults.parse(item.scripts.priority(trigger, locale))?.let { return it }
+        item.metas.forEach { meta ->
+            ItemScriptPriorityDefaults.parse(meta.scripts.priority(trigger, locale))?.let { return it }
+        }
+        return null
     }
 
     private fun createTriggerEvent(
@@ -1149,6 +1467,17 @@ object ItemActionListener {
         object Pass : OwnershipValidation()
         object Denied : OwnershipValidation()
         object Changed : OwnershipValidation()
+    }
+
+    /**
+     * 派发阶段：区分静态监听器（默认优先级）与动态覆盖监听器（配置的非默认优先级）。
+     */
+    private sealed class DispatchPhase {
+        /** 静态 @SubscribeEvent 监听器，处理默认优先级的触发器。 */
+        object Default : DispatchPhase()
+
+        /** 动态注册的覆盖监听器，处理配置为指定优先级的触发器。 */
+        data class Override(val priority: EventPriority) : DispatchPhase()
     }
 
     private data class ManagedItem(

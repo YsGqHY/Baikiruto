@@ -189,6 +189,23 @@ items:
         &ops.setData("last_trigger", "unequip")
         &ops.setData("unequip_slot", &ctx["slot"])
         return item
+      # Event priority configuration examples (optional, defaults to each trigger's built-in priority):
+      #
+      # Format 1 - key suffix:  <trigger>@<priority>
+      #   on_interact@lowest: |
+      #     &ops.setData("last_trigger", "interact_lowest")
+      #     return item
+      #   on_attack!!@high: |           # combine cancel-event (!!) with priority (@high)
+      #     &ops.setData("last_trigger", "attack_high_cancel")
+      #     return item
+      #
+      # Format 2 - sub-map with priority field:
+      #   on_right_click:
+      #     type: fluxon
+      #     priority: highest           # lowest / low / normal / high / highest / monitor
+      #     script: |
+      #       &ops.setData("last_trigger", "right_click_highest")
+      #       return item
     metas:
       trace:
         scripts:

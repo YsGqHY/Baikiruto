@@ -108,6 +108,8 @@ object ItemDefinitionLoader {
             loadedGroups = groupRegistry.keys().size
         ).call()
         ItemScriptPreheatService.preheatIfEnabled(loadedItems)
+        // 物品加载完成后刷新优先级覆盖监听器（注销旧的，按新配置注册）
+        ItemActionListener.refreshOverlayListeners()
 
         console().sendLang(
             "log-item-reload-complete",
@@ -3199,27 +3201,29 @@ object ItemDefinitionLoader {
                 val type = stringValue(source["type"])
                     ?: stringValue(source["engine"])
                     ?: BaikirutoScriptSource.DEFAULT_TYPE
+                val priority = stringValue(source["priority"])
                 val content = parseScriptValue(
                     source["script"]
                         ?: source["source"]
                         ?: source["content"]
                 )
-                BaikirutoScriptSource.of(content, type)
+                BaikirutoScriptSource.of(content, type, priority)
             }
             is ConfigurationSection -> {
                 val type = source.getString("type")
                     ?: source.getString("engine")
                     ?: BaikirutoScriptSource.DEFAULT_TYPE
+                val priority = source.getString("priority")
                 val content = parseScriptValue(
                     source.get("script")
                         ?: source.get("source")
                         ?: source.get("content")
                 )
-                BaikirutoScriptSource.of(content, type)
+                BaikirutoScriptSource.of(content, type, priority)
             }
             else -> BaikirutoScriptSource.of(source.toString())
         } ?: return null
-        val normalized = BaikirutoScriptSource.of(parsed.content, parsed.normalizedType()) ?: return null
+        val normalized = BaikirutoScriptSource.of(parsed.content, parsed.normalizedType(), parsed.priority) ?: return null
         val scriptHandler = Baikiruto.apiOrNull()?.getScriptHandler() ?: return normalized
         val knownType = scriptHandler.getScriptType(normalized.normalizedType())
         if (knownType == null) {
